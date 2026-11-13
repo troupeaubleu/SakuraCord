@@ -228,7 +228,6 @@ private struct ReactionActionMenu: View {
         // Hover tracks the square frame, so clicks and the pointer cover it
         // too, as on the other hover action controls.
         .contentShape(Rectangle())
-        .pointerStyle(.link)
         .onModalHover { isHovering = $0 }
         .help("Add reaction")
         .background {

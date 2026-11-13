@@ -330,22 +330,6 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
         return super.hitTest(point)
     }
 
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        guard !isScrolling, !interactionsBlocked,
-              WindowModalCoordinator.allowsInput(for: self),
-              let visibleRect = enclosingScrollView?.documentVisibleRect
-        else { return }
-        for index in itemRange(intersecting: visibleRect) {
-            guard canActivateServerTag(at: index),
-                  let frame = serverTagFrame(at: index)
-            else { continue }
-            let cursorRect = frame.intersection(visibleRect)
-            guard !cursorRect.isNull, !cursorRect.isEmpty else { continue }
-            addCursorRect(cursorRect, cursor: .pointingHand)
-        }
-    }
-
     override func mouseMoved(with event: NSEvent) {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !isScrolling, !interactionsBlocked else { return }

@@ -16,17 +16,6 @@ extension NativeMessageTimelineCoordinator {
 }
 
 extension NativeTimelineCanvasView {
-    func installInviteCursors(at index: Int, rowOrigin: CGFloat) {
-        for card in layouts[index].inviteRegions {
-            if !card.isDisabled {
-                addCursorRect(card.buttonFrame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-            }
-            if let frame = card.detailsFrame {
-                addCursorRect(frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-            }
-        }
-    }
-
     func activateInvite(_ card: NativeTimelineInviteLayout, message: Message, expands: Bool) {
         guard let model else { return }
         if let instanceID = card.content?.activityInstanceID {

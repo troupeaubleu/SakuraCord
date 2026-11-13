@@ -129,7 +129,6 @@ struct HoverActionControlLabel<Content: View>: View {
             // Hover tracks the whole frame, so clicks and the pointer cover
             // its corners too, outside the capsule.
             .contentShape(Rectangle())
-            .pointerStyle(isEnabled ? .link : nil)
             .onModalHover {
                 isHovering = $0
                 onHoverChanged?($0)

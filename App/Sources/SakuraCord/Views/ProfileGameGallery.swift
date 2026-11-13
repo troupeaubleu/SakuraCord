@@ -116,7 +116,6 @@ private struct ProfileGameGalleryThumbnail: View {
                 .animation(.easeOut(duration: 0.12), value: isHovered)
         }
         .buttonStyle(.plain)
-        .pointerStyle(.link)
         .onModalHover { isHovered = $0 }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

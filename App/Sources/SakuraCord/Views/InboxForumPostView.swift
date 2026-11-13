@@ -91,11 +91,7 @@ final class ForumPostPreviewTextView: NSView {
         super.init(frame: .zero)
         setAccessibilityElement(true)
         setAccessibilityRole(.staticText)
-        renderer.onDisplayChange = { [weak self] in
-            guard let self else { return }
-            needsDisplay = true
-            window?.invalidateCursorRects(for: self)
-        }
+        renderer.onDisplayChange = { [weak self] in self?.needsDisplay = true }
     }
 
     @available(*, unavailable)
@@ -109,7 +105,6 @@ final class ForumPostPreviewTextView: NSView {
         renderer.configure(configuration, revealStore: revealStore)
         guard previous != configuration else { return }
         needsDisplay = true
-        window?.invalidateCursorRects(for: self)
     }
 
     func stopObservingReveals() {
@@ -179,15 +174,6 @@ final class ForumPostPreviewTextView: NSView {
     override func mouseExited(with event: NSEvent) {
         setHoveredSpoiler(nil)
         super.mouseExited(with: event)
-    }
-
-    override func resetCursorRects() {
-        guard !renderer.hiddenSpoilerRanges.isEmpty, WindowModalCoordinator.allowsInput(for: self) else { return }
-        for range in renderer.hiddenSpoilerRanges {
-            for frame in hiddenSpoilerFrames(for: range) {
-                addCursorRect(frame, cursor: .pointingHand)
-            }
-        }
     }
 
     private func setHoveredSpoiler(_ location: Int?) {

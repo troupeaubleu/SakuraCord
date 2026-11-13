@@ -1,7 +1,7 @@
 import AppKit
 import SakuraCordModels
 
-/// Pointer state for the thread card: hover, press and cursor. Each change
+/// Pointer state for the thread card: hover and press. Each change
 /// invalidates only the card, not its row.
 extension NativeTimelineCanvasView {
     func threadCardPointerHit(at point: CGPoint) -> MessageID? {
@@ -38,11 +38,6 @@ extension NativeTimelineCanvasView {
         guard let messageID, pointer.hoveredThreadMessageID == messageID else { return .idle }
         if case let .thread(pressedID, _)? = pressedActivationTarget, pressedID == messageID { return .pressed }
         return .hovered
-    }
-
-    func installThreadCardCursor(at index: Int, rowOrigin: CGFloat) {
-        guard let frame = layouts[index].threadFrame else { return }
-        addCursorRect(frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
     }
 
     /// What the card shows beneath its name, for VoiceOver.

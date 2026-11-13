@@ -184,22 +184,6 @@ extension NativeTimelineCanvasView {
 }
 
 extension NativeTimelineCanvasView {
-    func installPollCursors(at index: Int, rowOrigin: CGFloat) {
-        if let frame = layouts[index].pollResultFrame {
-            addCursorRect(NativeTimelinePollLayout.resultButtonFrame(in: frame).offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-        }
-        guard case let .message(row, _, _) = items[index], row.message.outboxState == .confirmed,
-              let poll = row.message.poll, let layout = layouts[index].pollLayout else { return }
-        var frames = layout.answers.map(\.frame) + [layout.votesFrame]
-        if !poll.isClosed() {
-            if poll.selectedAnswerIDs.isEmpty { frames.append(layout.revealFrame) }
-            if canSubmitPollVote(row.message, poll: poll, state: pollPresentation(for: row.id)) {
-                frames.append(layout.submitFrame)
-            }
-        }
-        for frame in frames { addCursorRect(frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand) }
-    }
-
     /// Whether Vote or Remove Vote does anything now: the poll is open, the
     /// user may change their vote, and there is a vote to send or remove.
     func canSubmitPollVote(_ message: Message, poll: MessagePoll, state: NativeTimelinePollPresentation) -> Bool {

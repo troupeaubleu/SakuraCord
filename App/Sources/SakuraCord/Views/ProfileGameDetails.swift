@@ -169,7 +169,6 @@ struct ProfileGameRow<Content: View>: View {
         if let url {
             Button { openURL(url) } label: { row }
                 .buttonStyle(.plain)
-                .pointerStyle(.link)
                 .onModalHover { isHovered = $0 }
         } else {
             row

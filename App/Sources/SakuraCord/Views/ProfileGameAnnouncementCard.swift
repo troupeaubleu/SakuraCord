@@ -134,7 +134,7 @@ struct ProfileGameDescription: View {
                 }
             if expanded || fullHeight > collapsedHeight + 1 {
                 Button(expanded ? "Show Less" : "Show More") { expanded.toggle() }
-                    .buttonStyle(.plain).pointerStyle(.link)
+                    .buttonStyle(.plain)
                     .font(.interfaceSystem(size: 13, weight: .semibold)).foregroundStyle(SakuraCordAccentColor.color)
             }
         }

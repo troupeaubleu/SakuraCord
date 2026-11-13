@@ -19,7 +19,6 @@ extension NativeMemberListCanvasView {
             hoveredIndex = index(at: point)
             updateServerTagHover(at: point)
         }
-        window?.invalidateCursorRects(for: self)
         updateVisibleOverlaysAndPrewarming()
     }
 
@@ -40,7 +39,6 @@ extension NativeMemberListCanvasView {
         reconciledVisibleRange = visible
         reconciledViewportWidth = bounds.width
         reconcileServerTagCardPresentation()
-        window?.invalidateCursorRects(for: self)
         let visibleIDs = Set(visible.map { items[$0].id })
         memberNameGeometries = memberNameGeometries.filter { visibleIDs.contains($0.key) }
         let prewarmLower = max(0, visible.lowerBound - NativeMemberListMetrics.prewarmItemCount)

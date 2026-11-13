@@ -514,7 +514,6 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         for (id, oldFrame) in reflowingFrames {
             if let card = cards[id] { animateReflow(card, from: oldFrame.offsetBy(dx: 0, dy: scrollShift)) }
         }
-        window?.invalidateCursorRects(for: self)
         // A page that leaves the end of the board on screen asks for the next.
         requestNextPageIfNeeded()
         // A live reorder can change the first visible post without scrolling.
@@ -704,7 +703,6 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             guard let self, !Task.isCancelled else { return }
             rebuildToolTips()
             if !assistiveTechnology { updateAccessibilityChildren() }
-            window?.invalidateCursorRects(for: self)
             if needsObservationRefresh {
                 needsObservationRefresh = false
                 schedulePresentationRefresh()

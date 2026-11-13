@@ -391,7 +391,6 @@ struct UnreadMessagesBanner: View {
                 .buttonBorderShape(.capsule)
                 .controlSize(.regular)
                 .fixedSize()
-                .pointerStyle(.link)
                 .accessibilityHint("Marks this conversation read")
             }
             .font(.interface(.callout).weight(.semibold))
@@ -404,7 +403,6 @@ struct UnreadMessagesBanner: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isLoadingHistory)
-                .pointerStyle(isLoadingHistory ? nil : .link)
                 .accessibilityLabel(message)
                 .accessibilityHint("Jumps to the first unread message")
             }
@@ -592,7 +590,6 @@ struct TimelineNewestButton: View {
             )
         }
         .buttonStyle(.plain)
-        .pointerStyle(.link)
         .padding(
             .bottom,
             ChatDetailLayoutPolicy.newMessagesButtonBottomPadding(

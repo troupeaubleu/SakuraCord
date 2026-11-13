@@ -58,90 +58,15 @@ extension NativeTimelineCanvasView {
               displayedRowOrigin(at: index) < visibleRect.maxY
         {
             if layouts.indices.contains(index) {
-                installContentCursors(at: index, rowOrigin: displayedRowOrigin(at: index))
                 installTextCursorRects(at: index)
                 for codeBlock in codeBlockPointerTargets(at: index) {
-                    addCursorRect(
-                        codeBlock.copyButtonFrame,
-                        cursor: .pointingHand
-                    )
                     addToolTip(codeBlock.copyButtonFrame, owner: self, userData: nil)
                 }
-            }
-            if layouts.indices.contains(index) {
                 let rowOrigin = displayedRowOrigin(at: index)
-                if let toggle = layouts[index].suppressedHeader?.toggleFrame {
-                    addCursorRect(toggle.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-                }
-                if case let .loader(isLoading, _) = items[index],
-                   !isLoading,
-                   let frame = layouts[index].loaderLayout?.controlFrame
-                {
-                    addCursorRect(
-                        frame.offsetBy(dx: 0, dy: rowOrigin),
-                        cursor: .pointingHand
-                    )
-                }
-                if case let .message(row, _, _) = items[index],
-                   !row.message.type.hasGeneratedContent
-                {
-                    for frame in
-                        NativeTimelineAuthorProfileGeometry.hitFrames(
-                            avatarFrame: layouts[index].avatarFrame,
-                            authorFrame: layouts[index].authorFrame
-                        )
-                    {
-                        addCursorRect(
-                            frame.offsetBy(dx: 0, dy: rowOrigin),
-                            cursor: .pointingHand
-                        )
-                    }
-                }
-                if let region = layouts[index].commandInvocationRegion {
-                    addCursorRect(region.profileFrame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-                    addCursorRect(region.pillFrame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-                }
-                for frame in [layouts[index].ephemeralRegion?.dismissFrame].compactMap(\.self)
-                    + layouts[index].deliveryActions.map(\.frame)
-                {
-                    addCursorRect(
-                        frame.offsetBy(dx: 0, dy: rowOrigin),
-                        cursor: .pointingHand
-                    )
-                }
-                for region in layouts[index].sakuraCordDeepLinkRegions {
-                    addCursorRect(
-                        region.buttonFrame.offsetBy(dx: 0, dy: rowOrigin),
-                        cursor: .pointingHand
-                    )
-                }
-                if let tag = layouts[index].serverTagRegion, tag.presentation.identity.guildID != nil {
-                    addCursorRect(tag.frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-                }
                 installRoleIconToolTip(at: index, rowOrigin: rowOrigin)
-                installForwardedSourceCursor(at: index, rowOrigin: rowOrigin)
-                installThreadCardCursor(at: index, rowOrigin: rowOrigin)
-                installReactionCursors(at: index, rowOrigin: rowOrigin)
-                installPollCursors(at: index, rowOrigin: rowOrigin)
-                installInviteCursors(at: index, rowOrigin: rowOrigin)
-                installFileCardCursors(at: index, rowOrigin: rowOrigin)
-                installAudioFileCursors(at: index, rowOrigin: rowOrigin)
-                installComponentCursors(at: index, rowOrigin: rowOrigin)
-                installAutoModAlertCursors(at: index, rowOrigin: rowOrigin)
-                installTranslationCursor(at: index, rowOrigin: rowOrigin)
+                installFileCardToolTips(at: index, rowOrigin: rowOrigin)
             }
             index += 1
-        }
-    }
-
-    private func installReactionCursors(at index: Int, rowOrigin: CGFloat) {
-        guard case let .message(row, _, _) = items[index] else { return }
-        let cursor: NSCursor = model?.canUpdateReactions(on: row.message) == true ? .pointingHand : .operationNotAllowed
-        for region in layouts[index].reactionRegions {
-            addCursorRect(region.frame.offsetBy(dx: 0, dy: rowOrigin), cursor: cursor)
-        }
-        if let frame = layouts[index].addReactionFrame, model?.canCreateReactions(on: row.message) == true {
-            addCursorRect(frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
         }
     }
 
@@ -171,24 +96,24 @@ extension NativeTimelineCanvasView {
                     rangeLocation: spoiler.range.location
                 ), !spoilerRevealStore.isTextRevealed(key)
                 else { continue }
-                addCursorRect(
-                    spoiler.frame.offsetBy(dx: 0, dy: rowOrigin),
-                    cursor: .pointingHand
-                )
+                // A click reveals the spoiler instead of placing the caret.
+                addCursorRect(spoiler.frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .arrow)
             }
         }
+        // Mentions and a system message's names act on a click, so they
+        // don't take the caret; only a link to a URL takes the hand.
         for mention in mentionPointerRegions(at: index) where !mention.isTimestamp {
-            addCursorRect(mention.frame, cursor: .pointingHand)
+            addCursorRect(mention.frame, cursor: .arrow)
         }
         for selectable in linkPointerTextRegions(for: item, layout: layout) {
-            for frame in NativeTimelineTextHitTester.linkFrames(
+            for link in NativeTimelineTextHitTester.links(
                 value: selectable.value,
                 framesetter: selectable.framesetter,
                 frame: selectable.frame
             ) {
                 addCursorRect(
-                    frame.offsetBy(dx: 0, dy: rowOrigin),
-                    cursor: .pointingHand
+                    link.frame.offsetBy(dx: 0, dy: rowOrigin),
+                    cursor: link.url.scheme == "sakuracord-action" ? .arrow : .pointingHand
                 )
             }
         }
@@ -197,14 +122,6 @@ extension NativeTimelineCanvasView {
     private func installRoleIconToolTip(at index: Int, rowOrigin: CGFloat) {
         guard let roleRegion = layouts[index].roleIconRegion else { return }
         addToolTip(roleRegion.frame.offsetBy(dx: 0, dy: rowOrigin), owner: self, userData: nil)
-    }
-
-    private func installForwardedSourceCursor(at index: Int, rowOrigin: CGFloat) {
-        guard let frame = layouts[index].forwardedSourceRegion?.frame else { return }
-        addCursorRect(
-            frame.offsetBy(dx: 0, dy: rowOrigin),
-            cursor: .pointingHand
-        )
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -1319,25 +1236,6 @@ extension NativeTimelineCanvasView {
             return .message(message.id)
         }
         return nil
-    }
-
-    /// Enabled buttons, link buttons and selects take the pointing hand at
-    /// their drawn frame. Disabled or loading ones, and those under an
-    /// unrevealed spoiler, keep the arrow.
-    func installComponentCursors(at index: Int, rowOrigin: CGFloat) {
-        guard let messageID = items[index].messageID else { return }
-        for layout in layouts[index].componentLayouts {
-            let hiddenContainers = NativeTimelineSpoilerConcealmentPolicy.hiddenContainerFrames(
-                in: layout, messageID: messageID, store: spoilerRevealStore
-            )
-            let frames = layout.buttons.filter { !$0.isDisabled && !$0.isLoading }.map(\.frame)
-                + layout.selects.filter { !$0.isDisabled && !$0.isLoading }.map(\.frame)
-            for frame in frames where !NativeTimelineSpoilerConcealmentPolicy.isInsideHiddenContainer(
-                frame, hiddenContainerFrames: hiddenContainers
-            ) {
-                addCursorRect(frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-            }
-        }
     }
 
     func componentButtonPointerHit(

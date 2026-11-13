@@ -236,7 +236,6 @@ private struct ForumNewPostButton: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.5)
-        .pointerStyle(isEnabled ? .link : nil)
     }
 }
 
@@ -260,7 +259,6 @@ private struct ForumSortMenu: View {
             .contentShape(Circle())
             .onHover { isHovered = $0 }
             .animation(.easeOut(duration: 0.15), value: isHovered)
-            .pointerStyle(.link)
             .overlay {
                 NativeForumSortMenuButton(
                     sortOrder: model.forumSortOrder,
@@ -470,7 +468,7 @@ private struct NativeForumSortMenuButton: NSViewRepresentable {
 }
 
 /// The sort menu's click target sits over the SwiftUI chip, so it reports
-/// hover back to the chip and shows the pointing hand itself.
+/// hover back to the chip.
 final class ForumSortMenuNSButton: NSButton {
     var onHover: ((Bool) -> Void)?
     private var hoverArea: NSTrackingArea?
@@ -496,11 +494,6 @@ final class ForumSortMenuNSButton: NSButton {
         super.mouseExited(with: event)
         onHover?(false)
     }
-
-    override func resetCursorRects() {
-        guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        addCursorRect(bounds, cursor: .pointingHand)
-    }
 }
 
 struct ForumTagButton: View {
@@ -508,7 +501,6 @@ struct ForumTagButton: View {
     let emoji: ForumTagEmojiPresentation?
     let isSelected: Bool
     let action: () -> Void
-    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
@@ -526,7 +518,6 @@ struct ForumTagButton: View {
         }
         .buttonStyle(.plain)
         .animation(.snappy(duration: 0.2), value: isSelected)
-        .pointerStyle(isEnabled ? .link : nil)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityHint(tag.isModerated ? "Only moderators can apply this tag" : "")
     }

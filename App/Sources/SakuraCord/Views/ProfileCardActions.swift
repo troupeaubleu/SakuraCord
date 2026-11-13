@@ -16,7 +16,6 @@ struct ProfileAvatarExpansion: ViewModifier {
             }
             .buttonStyle(.plain)
             .contentShape(Circle())
-            .pointerStyle(.link)
             .onModalHover { isHovered = $0 }
             .help("Open full profile")
             .accessibilityLabel("Open full profile")
@@ -195,7 +194,6 @@ private struct ProfileQuickMessageSendButtonStyle: ButtonStyle {
             .animation(.snappy(duration: 0.16), value: configuration.isPressed)
             .animation(.easeOut(duration: 0.12), value: isHovering)
             .animation(.easeOut(duration: 0.18), value: isEnabled)
-            .pointerStyle(isEnabled ? .link : nil)
     }
 
     private func scale(isPressed: Bool) -> CGFloat {

@@ -58,7 +58,6 @@ extension NativeMemberListCanvasView {
             profilePopoverCoordinator.close()
         }
         updateTrackingAreas()
-        window?.invalidateCursorRects(for: self)
         updateVisibleOverlaysAndPrewarming()
     }
 
@@ -89,7 +88,6 @@ extension NativeMemberListCanvasView {
         fittedTextLines.removeAll(keepingCapacity: true)
         memberNameGeometries.removeAll(keepingCapacity: true)
         reconcileServerTagCardPresentation()
-        window?.invalidateCursorRects(for: self)
         loadedItemIndexes = document.loadedItemIndexes
         let placeholderStateChanged = hasLoadingPlaceholders
             != document.hasLoadingPlaceholders

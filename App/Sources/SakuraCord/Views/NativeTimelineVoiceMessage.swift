@@ -501,7 +501,6 @@ final class NativeTimelineVoiceMessageOverlay: NSView {
         didSet {
             needsDisplay = true
             layoutSpinner()
-            window?.invalidateCursorRects(for: self)
         }
     }
 
@@ -655,16 +654,6 @@ final class NativeTimelineVoiceMessageOverlay: NSView {
         region.frame.insetBy(dx: -InterfaceScale.metric(4), dy: -InterfaceScale.metric(4))
     }
 
-    /// The canvas's cursor rects stop at this view, so an audio file's
-    /// controls point here too, at the frames their clicks land on.
-    override func resetCursorRects() {
-        guard region.style == .audioFile, WindowModalCoordinator.allowsInput(for: self) else { return }
-        let origin = Self.frame(of: region).origin
-        for (_, frame) in NativeTimelineCanvasView.controlHitFrames(of: region) where !frame.isNull && !frame.isEmpty {
-            addCursorRect(frame.offsetBy(dx: -origin.x, dy: -origin.y), cursor: .pointingHand)
-        }
-    }
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         updateAnimation()
@@ -779,18 +768,6 @@ extension NativeTimelineCanvasView {
             (.speed, region.speedFrame.insetBy(dx: -3 * slop, dy: -6 * slop)),
             (.waveform, region.waveformFrame.insetBy(dx: -4 * slop, dy: -6 * slop)),
         ]
-    }
-
-    /// An audio file card's play, seek and speed controls point where their
-    /// clicks land.
-    func installAudioFileCursors(at index: Int, rowOrigin: CGFloat) {
-        for region in layouts[index].audioPlayers
-        where region.style == .audioFile
-            && !spoilerRevealStore.isConcealed(region.attachment, in: region.messageID) {
-            for (_, frame) in Self.controlHitFrames(of: region) where !frame.isNull && !frame.isEmpty {
-                addCursorRect(frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-            }
-        }
     }
 
     /// The voice message or audio file control under `point`.

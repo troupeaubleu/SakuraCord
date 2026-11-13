@@ -25,7 +25,6 @@ struct DirectMessageInboxView: View {
                 count: model.incomingFriendRequestCount, isSelected: selection == .friends
             )
             .tag(DirectMessageSidebarSelection.friends)
-            .pointerStyle(.link)
             .overlay { ChannelRowHoverBridge(isSelected: selection == .friends) }
 
             // Discord shows the row only while requests or spam wait; its
@@ -37,7 +36,6 @@ struct DirectMessageInboxView: View {
                     isSelected: selection == .messageRequests
                 )
                 .tag(DirectMessageSidebarSelection.messageRequests)
-                .pointerStyle(.link)
                 .overlay { ChannelRowHoverBridge(isSelected: selection == .messageRequests) }
             }
 
@@ -56,7 +54,6 @@ struct DirectMessageInboxView: View {
                         animatesAvatar: animatesAvatars
                     )
                     .tag(DirectMessageSidebarSelection.channel(channel.id))
-                    .pointerStyle(.link)
                 }
 
                 SidebarBottomScrollSpacer(height: bottomContentInset)

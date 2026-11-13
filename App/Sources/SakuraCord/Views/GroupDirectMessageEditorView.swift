@@ -33,7 +33,6 @@ struct GroupDirectMessageEditorView: View {
                         .buttonStyle(.plain)
                         .font(.interface(.callout).weight(.medium))
                         .foregroundStyle(.red)
-                        .pointerStyle(.link)
                         .disabled(isPreparingIcon)
                 }
             }

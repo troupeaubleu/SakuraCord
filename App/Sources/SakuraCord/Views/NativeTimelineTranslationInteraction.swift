@@ -2,11 +2,6 @@ import AppKit
 import SakuraCordModels
 
 extension NativeTimelineCanvasView {
-    func installTranslationCursor(at index: Int, rowOrigin: CGFloat) {
-        guard let frame = layouts[index].translationRegion?.actionFrame else { return }
-        addCursorRect(frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
-    }
-
     func translationAccessibilityActions(for message: Message) -> [NSAccessibilityCustomAction] {
         guard let title = model?.messageTranslationMenuTitle(for: message) else { return [] }
         var actions = [NSAccessibilityCustomAction(name: title) { [weak self] in

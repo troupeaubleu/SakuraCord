@@ -65,12 +65,10 @@ extension NativeTimelineCanvasView {
         return frame?.offsetBy(dx: 0, dy: displayedRowOrigin(at: index))
     }
 
-    func installFileCardCursors(at index: Int, rowOrigin: CGFloat) {
+    /// The download button names what it does.
+    func installFileCardToolTips(at index: Int, rowOrigin: CGFloat) {
         guard let messageID = items[index].messageID else { return }
         for card in fileCards(at: index, messageID: messageID) {
-            // The body previews and the button downloads, so both point; the
-            // button names what it does.
-            addCursorRect(card.frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
             addToolTip(card.buttonFrame.offsetBy(dx: 0, dy: rowOrigin), owner: self, userData: nil)
         }
     }

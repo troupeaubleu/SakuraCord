@@ -76,7 +76,6 @@ private struct MessageRequestRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .pointerStyle(.link)
             .help("Open")
 
             MessageRequestActions(model: model, channel: channel)

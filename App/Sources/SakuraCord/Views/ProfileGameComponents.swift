@@ -87,7 +87,6 @@ private struct ProfileGameActionFill: ViewModifier {
             .background { Capsule().fill(fill) }
             .opacity(isEnabled ? 1 : 0.5)
             .animation(.easeOut(duration: 0.12), value: isHovered)
-            .pointerStyle(isEnabled ? .link : nil)
             .onModalHover { isHovered = $0 }
     }
 
@@ -117,7 +116,6 @@ struct ProfileGameTextButton: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .pointerStyle(.link)
         .onModalHover { isHovered = $0 }
     }
 }

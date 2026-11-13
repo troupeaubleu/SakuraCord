@@ -156,13 +156,6 @@ extension ForumBoardView {
         activate(hit.entry.item, at: hit.local)
     }
 
-    override func resetCursorRects() {
-        guard let layoutState, WindowModalCoordinator.allowsInput(for: self) else { return }
-        for entry in layoutState.entries(intersecting: visibleRect) where isInteractive(entry.item) {
-            addCursorRect(entry.frame, cursor: .pointingHand)
-        }
-    }
-
     // MARK: Activation
 
     /// Opens a post or retries a failed page. A click passes the point inside

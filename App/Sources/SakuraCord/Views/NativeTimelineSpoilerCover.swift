@@ -143,6 +143,17 @@ enum NativeTimelineSpoilerCover {
 }
 
 extension NativeTimelineCanvasView {
+    /// The row's unrevealed spoiler containers, in the row's space: a click
+    /// anywhere in one reveals it, so the text inside it can't be selected.
+    func hiddenSpoilerContainerFrames(at index: Int) -> [CGRect] {
+        guard let messageID = items[index].messageID else { return [] }
+        return layouts[index].componentLayouts.flatMap {
+            NativeTimelineSpoilerConcealmentPolicy.hiddenContainerFrames(
+                in: $0, messageID: messageID, store: spoilerRevealStore
+            )
+        }
+    }
+
     /// Fades a spoiler's cover off what its reveal uncovers, as Discord does.
     /// Call it before revealing, while the cover is still drawn. A media
     /// cover's pill leaves at once, as Discord's does, so only the blur fades.

@@ -137,11 +137,6 @@ final class NativeTimelineUploadRingView: NSView {
         activate?()
     }
 
-    override func resetCursorRects() {
-        guard activate != nil, WindowModalCoordinator.allowsInput(for: self) else { return }
-        addCursorRect(controlFrame, cursor: .pointingHand)
-    }
-
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
@@ -228,7 +223,6 @@ extension NativeTimelineCanvasView {
         for (key, view) in uploadRings where !shown.contains(key) {
             uploadRings[key] = nil
             view.activate = nil
-            window?.invalidateCursorRects(for: view)
             // Only a finished upload in a row that stays put fades out; a ring
             // whose row scrolled away or is flying leaves at once.
             guard visibleRows.contains(key.row) else {

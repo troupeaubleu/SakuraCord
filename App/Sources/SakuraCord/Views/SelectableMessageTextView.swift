@@ -347,10 +347,13 @@ final class RichMessageNSTextView: NSTextView {
     }
 
     private func updateCursor(at point: NSPoint) {
-        if mentionAttachment(at: point) == nil, link(at: point) == nil, hiddenSpoiler(at: point) == nil {
-            NSCursor.iBeam.set()
-        } else {
+        if let link = link(at: point), link.url.scheme != "sakuracord-action" {
             NSCursor.pointingHand.set()
+        } else if mentionAttachment(at: point) != nil || link(at: point) != nil || hiddenSpoiler(at: point) != nil {
+            // A click on these acts instead of placing the caret.
+            NSCursor.arrow.set()
+        } else {
+            NSCursor.iBeam.set()
         }
     }
 

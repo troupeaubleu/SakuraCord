@@ -398,11 +398,11 @@ enum NativeTimelineTextHitTester {
         }
     }
 
-    static func linkFrames(
+    static func links(
         value: NSAttributedString,
         framesetter: CTFramesetter,
         frame: CGRect
-    ) -> [CGRect] {
+    ) -> [(url: URL, frame: CGRect)] {
         guard value.length > 0,
               frame.width > 0,
               frame.height > 0
@@ -412,7 +412,7 @@ enum NativeTimelineTextHitTester {
             value: value,
             textFrame: textFrame,
             outerFrame: frame
-        ).map(\.frame)
+        ).map { ($0.url, $0.frame) }
     }
 
     private static func linkRegions(
