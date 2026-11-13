@@ -48,7 +48,6 @@ struct ComposerChromeLayout<Header: View, Leading: View, Input: View, Accessorie
             .composerOverlay(overlay)
 
             send
-                .glassEffect(.regular.interactive(), in: Circle())
                 .frame(height: ChatChromeMetrics.composerControlHeight)
         }
     }
@@ -69,9 +68,9 @@ struct ComposerChromeLayout<Header: View, Leading: View, Input: View, Accessorie
                     send
                 }
             }
-            .padding(.horizontal, InterfaceScale.metric(11))
-            .padding(.vertical, InterfaceScale.metric(6))
-            .frame(minHeight: ChatChromeMetrics.controlHeight)
+            // The end buttons sit as far from the bar's sides as from its
+            // top and bottom.
+            .padding(InterfaceScale.metric(6))
         }
         .background { ComposerFocusSurface(focus: focus) }
         .glassEffect(

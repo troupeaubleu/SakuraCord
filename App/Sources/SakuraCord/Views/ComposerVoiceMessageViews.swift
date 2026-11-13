@@ -30,7 +30,19 @@ struct ComposerSendSlot: View {
 
     var body: some View {
         Group {
-            if mode == .send || mode == .sendVoice {
+            if sends, canSend {
+                // The prominent glass style tints itself and picks the
+                // symbol's colour to read on the tint.
+                Button(action: send) {
+                    Image(systemName: symbol)
+                        .font(.interfaceSystem(size: 15, weight: .bold))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(borderShape)
+                .tint(SakuraCordAccentColor.color)
+                .frame(width: ChatChromeMetrics.composerButtonSize, height: ChatChromeMetrics.composerButtonSize)
+            } else if sends {
                 Button(action: send) { symbolView }
                     .buttonStyle(.plain)
             } else {
@@ -47,7 +59,7 @@ struct ComposerSendSlot: View {
 
     private var symbolView: some View {
         Image(systemName: symbol)
-            .font(.interfaceSystem(size: 19, weight: .medium))
+            .font(.interfaceSystem(size: sends ? 15 : 19, weight: sends ? .bold : .medium))
             .foregroundStyle(foreground)
             .contentTransition(.symbolEffect(.replace.magic(fallback: .downUp.byLayer)))
             .frame(width: ChatChromeMetrics.composerButtonSize, height: ChatChromeMetrics.composerButtonSize)
@@ -64,6 +76,7 @@ struct ComposerSendSlot: View {
                 }
             }
             .background(hoverColor, in: shape)
+            .glassEffect(glass, in: shape)
             .contentShape(shape)
     }
 
@@ -99,7 +112,7 @@ struct ComposerSendSlot: View {
 
     private var symbol: String {
         switch mode {
-        case .send, .sendVoice: "paperplane"
+        case .send, .sendVoice: "arrow.up"
         case .voice: "waveform"
         case .stop: "stop.circle"
         }
@@ -114,21 +127,40 @@ struct ComposerSendSlot: View {
         }
     }
 
+    private var sends: Bool { mode == .send || mode == .sendVoice }
+
+    private var canSend: Bool { isEnabled && !isSlowmodeBlocked }
+
     private var foreground: Color {
         if mode == .stop { return .red }
-        guard isEnabled, !isSlowmodeBlocked else { return Color.gray.opacity(0.62) }
+        guard canSend else { return Color.gray.opacity(0.62) }
         return colorScheme == .dark ? .white : .black
     }
 
     private var shape: AnyShape {
         switch appearance {
         case .defaultStyle: AnyShape(Circle())
-        case .legacy: AnyShape(RoundedRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
+        case .legacy: AnyShape(RoundedRectangle(cornerRadius: Self.legacyCornerRadius, style: .continuous))
         }
     }
 
+    private var borderShape: ButtonBorderShape {
+        switch appearance {
+        case .defaultStyle: .circle
+        case .legacy: .roundedRectangle(radius: Self.legacyCornerRadius)
+        }
+    }
+
+    private static var legacyCornerRadius: CGFloat { InterfaceScale.metric(9) }
+
+    /// The default bar's slot is its own glass; the legacy bar's sits in
+    /// the bar's glass.
+    private var glass: Glass {
+        appearance == .defaultStyle ? .regular.interactive() : .identity
+    }
+
     private var hoverColor: Color {
-        appearance == .legacy && isHovering && isEnabled && !isSlowmodeBlocked ? .primary.opacity(0.14) : .clear
+        appearance == .legacy && isHovering && canSend ? .primary.opacity(0.14) : .clear
     }
 }
 
