@@ -552,7 +552,9 @@ extension NativeTimelineRowPainter {
             let members = key.map { key in layout.embedRegions[index...].prefix { concealedEmbeds[$0.embedID] == key } }
                 ?? [region]
             NativeTimelineSpoilerCover.draw(
-                covering: key != nil, in: region.frame, cornerRadius: region.cornerRadius
+                covering: key != nil,
+                in: region.frame,
+                cornerRadius: region.cornerRadius
             ) {
                 for member in members {
                     drawEmbedChrome(member, bubbleRegion: layout.bubbleRegion)
@@ -572,7 +574,9 @@ extension NativeTimelineRowPainter {
                 region.frame,
                 cornerRadius: region.cornerRadius,
                 accent: NSColor(discordColor: region.accentColor) ?? DiscordEmbedPalette.defaultAccent,
-                accentWidth: DiscordRichMessageMetrics.embedAccentBarWidth
+                accentWidth: DiscordRichMessageMetrics.embedAccentBarWidth,
+                fill: DiscordEmbedPalette.embedFill,
+                border: nil
             )
         } else if region.kind == .bubbleIntegratedCard, let bubbleRegion {
             bubbleIntegratedSection(
@@ -629,7 +633,7 @@ extension NativeTimelineRowPainter {
         else { return }
         drawMediaSurface(
             in: frame,
-            cornerRadius: InterfaceScale.metric(8),
+            cornerRadius: region.mediaCornerRadius,
             backdrop: NativeTimelineSemanticColor.opacity(.secondaryLabelColor, 0.10),
             image: MediaImageStore.shared.stillImage(for: .media(region.mediaPreviewURL ?? url)),
             fillsFrame: region.mediaFillsFrame || region.mediaPosterFillsFrame,

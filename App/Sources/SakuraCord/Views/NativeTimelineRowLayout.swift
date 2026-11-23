@@ -47,7 +47,8 @@ struct NativeTimelineRowLayout {
             .media(reference.displayURL, maximumPixelDimension: reference.isEmoji ? 96 : 720)
         }
 
-        var cornerRadius: CGFloat { reference.isEmoji ? 7 : 10 }
+        /// Emoji sent as links draw square, as emoji do inline.
+        var cornerRadius: CGFloat { reference.isEmoji ? 0 : NativeTimelineRowPainter.attachmentCornerRadius }
 
         var fillsFrame: Bool { !reference.isEmoji && !reference.isSticker }
     }
@@ -84,6 +85,7 @@ struct NativeTimelineRowLayout {
         let textRegions: [TextRegion]
         let imageRegions: [ImageRegion]
         var mediaFrame: CGRect?
+        var mediaCornerRadius: CGFloat = InterfaceScale.metric(8)
         let mediaURL: URL?
         let mediaPreviewURL: URL?
         let mediaPlaceholder: NativeTimelineMediaPlaceholder?
@@ -97,10 +99,8 @@ struct NativeTimelineRowLayout {
         /// A video that plays in place, as a GIF does, rather than on opening.
         var inlineVideoURL: URL? { mediaIsVideo && mediaAutoplaysInline ? mediaURL : nil }
 
-        /// Discord rounds a card tighter than the media it otherwise covers.
-        var cornerRadius: CGFloat {
-            kind == .card ? DiscordRichMessageMetrics.embedCornerRadius : DiscordRichMessageMetrics.cardCornerRadius
-        }
+        /// Cards round as component containers do, and bare media as attachments.
+        var cornerRadius: CGFloat { DiscordRichMessageMetrics.cardCornerRadius }
     }
 
     struct SakuraCordDeepLinkRegion {

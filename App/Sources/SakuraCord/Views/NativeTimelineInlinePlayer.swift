@@ -34,7 +34,7 @@ final class NativeTimelineInlinePlayer: NSView, AVPlayerViewDelegate {
         super.init(frame: frame)
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
-        layer?.cornerRadius = DiscordRichMessageMetrics.px(8)
+        layer?.cornerRadius = DiscordRichMessageMetrics.cardMediaCornerRadius
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
         playerView.controlsStyle = .inline

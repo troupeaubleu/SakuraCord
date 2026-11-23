@@ -519,6 +519,7 @@ enum NativeTimelineEmbedLayout {
             return NativeTimelineRowLayout.EmbedRegion(
                 embedID: embed.id, kind: .bareMedia, frame: frame,
                 textRegions: [], imageRegions: [], mediaFrame: frame,
+                mediaCornerRadius: region.mediaCornerRadius,
                 mediaURL: url, mediaPreviewURL: nil, mediaPlaceholder: .init(image),
                 mediaFillsFrame: true,
                 mediaIsVideo: false, mediaAutoplaysInline: false,

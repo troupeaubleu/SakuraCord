@@ -5,7 +5,7 @@ import SakuraCordModels
 enum NativeTimelineComponentButtonMetrics {
     static var height: CGFloat { DiscordRichMessageMetrics.px(32) }
     static var minimumWidth: CGFloat { DiscordRichMessageMetrics.px(60) }
-    static var cornerRadius: CGFloat { DiscordRichMessageMetrics.px(8) }
+    static var cornerRadius: CGFloat { DiscordRichMessageMetrics.scaledPoints(8) }
     /// Shared by measurement, painting and the animated-emoji overlay.
     static var horizontalPadding: CGFloat { DiscordRichMessageMetrics.px(12) }
     static var leadingGlyphAdvance: CGFloat { DiscordComponentEmojiMetrics.buttonSize + DiscordRichMessageMetrics.px(4) }
@@ -487,7 +487,7 @@ private enum NodeBuilder {
                             displayURL: item.displayURL,
                             description:
                                 item.description ?? item.title,
-                            cornerRadius: DiscordRichMessageMetrics.px(8),
+                            cornerRadius: DiscordRichMessageMetrics.cardMediaCornerRadius,
                             maximumPixelDimension: 256,
                             placeholder: item.placeholder
                         ))

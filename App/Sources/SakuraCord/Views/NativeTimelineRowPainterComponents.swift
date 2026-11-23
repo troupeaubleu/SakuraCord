@@ -157,7 +157,7 @@ extension NativeTimelineRowPainter {
         case let .media(media):
             drawMediaSurface(
                 in: region.frame,
-                cornerRadius: DiscordRichMessageMetrics.px(8),
+                cornerRadius: DiscordRichMessageMetrics.cardMediaCornerRadius,
                 backdrop: NSColor.secondaryLabelColor.withAlphaComponent(0.10),
                 image: media.previewURL.flatMap { MediaImageStore.shared.stillImage(for: .media($0)) },
                 fillsFrame: true,
@@ -317,9 +317,7 @@ extension NativeTimelineRowPainter {
                 ? NSColor.sakuraCordAccentColor.withAlphaComponent(
                     isHovered ? 0.22 : 0.16
                 )
-                : NSColor.labelColor.withAlphaComponent(
-                    isHovered ? 0.14 : 0.09
-                )
+                : isHovered ? NSColor.labelColor.withAlphaComponent(0.115) : DiscordEmbedPalette.embedFill
         ).setFill()
         shape.fill()
         if selected {

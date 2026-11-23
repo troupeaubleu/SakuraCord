@@ -501,7 +501,7 @@ extension NativeTimelineCanvasView {
                     role: .embedMedia(embed.embedID),
                     media: .media(mediaURL),
                     frame: mediaFrame,
-                    cornerRadius: InterfaceScale.metric(8),
+                    cornerRadius: embed.mediaCornerRadius,
                     isLooping: true,
                     fillsFrame: embed.mediaFillsFrame
                 )
@@ -568,7 +568,7 @@ extension NativeTimelineCanvasView {
                     role: .componentMedia(componentIndex, region.componentID),
                     media: .media(media.displayURL),
                     frame: region.frame,
-                    cornerRadius: DiscordRichMessageMetrics.px(8),
+                    cornerRadius: DiscordRichMessageMetrics.cardMediaCornerRadius,
                     isLooping: true,
                     fillsFrame: true
                 )
@@ -968,6 +968,7 @@ extension NativeTimelineCanvasView {
     struct DesiredInlineVideoOverlay {
         let key: InlineVideoOverlayKey
         let frame: CGRect
+        let cornerRadius: CGFloat
         let placeholder: NativeTimelineMediaPlaceholder?
     }
 
@@ -1005,6 +1006,7 @@ extension NativeTimelineCanvasView {
                             dx: 0,
                             dy: displayedRowOrigin(at: index)
                         ),
+                        cornerRadius: region.mediaCornerRadius,
                         placeholder: region.mediaPlaceholder
                     ))
                     if desired.count == Self.maximumInlineVideoOverlayCount {
@@ -1042,6 +1044,7 @@ extension NativeTimelineCanvasView {
                 inlineVideoOverlays[key] = overlay
             }
             overlay.frame = frame
+            overlay.layer?.cornerRadius = item.cornerRadius
             overlay.placeholder = item.placeholder?.image
             overlay.display(key.url, plays: plays)
         }

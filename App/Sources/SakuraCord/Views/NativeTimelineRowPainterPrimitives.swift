@@ -296,14 +296,20 @@ extension NativeTimelineRowPainter {
         edge.stroke()
     }
 
-    /// The card behind both an embed and a component container, so the two
-    /// always look alike: Discord's surface and subtle border, with an
-    /// accent drawn as a thicker left border. Discord rounds an embed's card
-    /// tighter than a container's, so each passes its own radius and bar.
-    static func discordCard(_ frame: CGRect, cornerRadius: CGFloat, accent: NSColor?, accentWidth: CGFloat) {
+    /// The card behind both an embed and a component container: a surface,
+    /// an optional subtle border, and an accent drawn as a thicker left
+    /// border. An embed passes its own bar width and a flat surface.
+    static func discordCard(
+        _ frame: CGRect,
+        cornerRadius: CGFloat,
+        accent: NSColor?,
+        accentWidth: CGFloat,
+        fill: NSColor = DiscordEmbedPalette.cardFill,
+        border: NSColor? = DiscordEmbedPalette.cardBorder
+    ) {
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(concentricRoundedRect: frame, cornerRadius: cornerRadius).addClip()
-        DiscordEmbedPalette.cardFill.setFill()
+        fill.setFill()
         frame.fill()
         if let accent {
             accent.setFill()
@@ -311,8 +317,10 @@ extension NativeTimelineRowPainter {
             // The 1 pt border runs along the other three sides only.
             NSBezierPath.clip(CGRect(x: frame.minX + accentWidth, y: frame.minY, width: frame.width - accentWidth, height: frame.height))
         }
-        DiscordEmbedPalette.cardBorder.setStroke()
-        NSBezierPath.strokeHairline(frame, cornerRadius: cornerRadius)
+        if let border {
+            border.setStroke()
+            NSBezierPath.strokeHairline(frame, cornerRadius: cornerRadius)
+        }
         NSGraphicsContext.restoreGraphicsState()
     }
 

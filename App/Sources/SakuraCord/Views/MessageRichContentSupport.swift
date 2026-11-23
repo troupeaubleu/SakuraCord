@@ -8,8 +8,10 @@ enum DiscordRichMessageMetrics {
     static var maximumWidth: CGFloat { InterfaceScale.metric(520) }
     /// Discord lays Components V2 out up to 600 pixels wide.
     static var componentsMaximumWidth: CGFloat { px(600) }
-    static var cardCornerRadius: CGFloat { px(8) }
-    /// An embed keeps its card geometry as its text grows, as Discord's does.
+    static var cardCornerRadius: CGFloat { scaledPoints(8) }
+    /// A card's images and media, as a component container's.
+    static var cardMediaCornerRadius: CGFloat { scaledPoints(8) }
+    /// An embed's thumbnail keeps its geometry as its text grows, as Discord's does.
     static var embedCornerRadius: CGFloat { fixedPx(4) }
     /// The colour bar on a container's leading edge.
     static var accentBarWidth: CGFloat { px(4) }
@@ -30,6 +32,12 @@ enum DiscordRichMessageMetrics {
     /// and media.
     nonisolated static func fixedPx(_ value: CGFloat) -> CGFloat {
         px(value, textSize: InterfaceTypographyMetrics.defaultMessageTextSize)
+    }
+
+    /// Points at the default message text that grow with it, for lengths
+    /// that should land on whole points where Discord's pixels would not.
+    nonisolated static func scaledPoints(_ value: CGFloat) -> CGFloat {
+        px(value * 16 / InterfaceTypographyMetrics.defaultMessageTextSize, textSize: InterfaceTypographyMetrics.messageTextSize)
     }
 
     private nonisolated static func px(_ value: CGFloat, textSize: CGFloat) -> CGFloat {
@@ -59,6 +67,9 @@ enum DiscordEmbedPalette {
     static var cardFill: NSColor {
         themed(NSColor(srgbRed: 10 / 255, green: 10 / 255, blue: 12 / 255, alpha: 1), light: .white)
     }
+
+    /// An embed's flat, faint surface, without a border, shared with resting reaction chips.
+    static var embedFill: NSColor { .labelColor.withAlphaComponent(0.065) }
 
     /// `--border-subtle`.
     static var cardBorder: NSColor {

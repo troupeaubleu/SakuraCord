@@ -162,7 +162,7 @@ extension NativeTimelineCanvasView {
                         region.componentID,
                         key: .media(media.displayURL),
                         frame: region.frame,
-                        cornerRadius: DiscordRichMessageMetrics.px(8),
+                        cornerRadius: DiscordRichMessageMetrics.cardMediaCornerRadius,
                         fillsFrame: true
                     )
                 case .media, .file:
@@ -180,7 +180,7 @@ extension NativeTimelineCanvasView {
                     item.id,
                     key: .media(url),
                     frame: region.mediaFrame,
-                    cornerRadius: InterfaceScale.metric(8),
+                    cornerRadius: region.mediaCornerRadius,
                     fillsFrame: region.mediaFillsFrame
                 )
             }
