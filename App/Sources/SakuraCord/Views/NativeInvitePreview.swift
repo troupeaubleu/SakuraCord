@@ -33,6 +33,7 @@ struct NativeInvitePreview: NSViewRepresentable {
         func loadImages() {
             guard let invite = card?.content else { return }
             let keys = [invite.iconURL.map { MediaImageKey.media($0, maximumPixelDimension: 128) },
+                        invite.bannerURL.map { MediaImageKey.media($0, maximumPixelDimension: 1_024) },
                         invite.inviter.map { MediaImageKey.media($0.avatarURL, maximumPixelDimension: 32) }].compactMap { $0 }
                 + invite.traits.compactMap { $0.emojiURL.map { MediaImageKey.media($0, maximumPixelDimension: 32) } }
             for key in keys {

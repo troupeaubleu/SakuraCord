@@ -15,40 +15,31 @@ extension NativeTimelineRowPainter {
         let outgoing = bubble?.isOutgoing == true
         let foreground = NativeTimelineBubbleDrawing.foregroundColor(for: bubble)
         let secondary = NativeTimelineBubbleDrawing.secondaryForegroundColor(for: bubble)
-        let background = bubble.map(NativeTimelineBubbleDrawing.fillColor) ?? (isModalPreview ? NSColor.windowBackgroundColor : .controlBackgroundColor)
-        let radius = NativeTimelineInviteLayout.cornerRadius
-        let shape = bubble.map(NativeTimelineBubbleDrawing.bodyPath)
-            ?? NSBezierPath(roundedRect: card.frame, xRadius: isModalPreview ? 0 : radius, yRadius: isModalPreview ? 0 : radius)
         if let bubble {
             bubbleIntegratedSection(card.frame, bubbleRegion: bubble, accentColor: card.content?.brandColor,
                 drawsTopSeparator: card.drawsTopSeparator)
         } else {
-            background.setFill()
-            shape.fill()
+            // A server card sits on the embed's flat, borderless surface.
+            (isModalPreview ? NSColor.windowBackgroundColor : DiscordEmbedPalette.embedFill).setFill()
+            NSBezierPath(concentricRoundedRect: card.frame, cornerRadius: isModalPreview ? 0 : NativeTimelineInviteLayout.cornerRadius).fill()
         }
-        NSGraphicsContext.saveGraphicsState()
-        shape.addClip()
-        inviteIdentityMedia(card, background: background, bubbleRegion: bubble)
-        NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(rect: CGRect(x: card.frame.minX, y: card.frame.minY, width: card.frame.width,
-                                 height: card.contentBottom - card.frame.minY + (card.hasCollapsedContent ? InterfaceScale.metric(16) : 1))).addClip()
+        inviteIdentityMedia(card, bubbleRegion: bubble, isModalPreview: isModalPreview)
         if let avatarFrame = card.inviterAvatarFrame, let url = card.content?.inviter?.avatarURL,
            let image = MediaImageStore.shared.stillImage(for: .media(url, maximumPixelDimension: 32)) {
-            drawImage(image, in: avatarFrame, cornerRadius: InterfaceScale.metric(8), fillsFrame: true)
+            drawImage(image, in: avatarFrame, cornerRadius: avatarFrame.width / 2, fillsFrame: true)
         }
         for label in card.labels {
-            let color: NSColor = card.isUnavailable && label.bold && !outgoing ? .systemRed : label.secondary ? secondary : foreground
+            let color: NSColor = label.overlaysBanner ? .white.withAlphaComponent(label.secondary ? 0.8 : 1)
+                : card.isUnavailable && label.bold && !outgoing ? .systemRed : label.secondary ? secondary : foreground
             attributedText(NativeTimelineAttributedTextBox(label.attributedText(color: color)), in: label.frame, model: nil)
         }
         for (index, dot) in card.countDots.enumerated() {
-            (index == 0 && card.content?.onlineCount != nil ? NSColor.systemGreen : secondary).setFill()
+            (index == 0 && card.content?.onlineCount != nil ? NSColor.systemGreen : .white.withAlphaComponent(0.8)).setFill()
             NSBezierPath(ovalIn: dot).fill()
         }
         for trait in card.traits {
-            foreground.withAlphaComponent(outgoing ? 0.24 : 0.13).setStroke()
-            let pill = NSBezierPath(concentricRoundedRect: trait.frame.insetBy(dx: 0.5, dy: 0.5), cornerRadius: InterfaceScale.metric(13.5))
-            pill.lineWidth = 1
-            pill.stroke()
+            foreground.withAlphaComponent(outgoing ? 0.16 : 0.08).setFill()
+            NSBezierPath(concentricRoundedRect: trait.frame, cornerRadius: DiscordRichMessageMetrics.cardMediaCornerRadius).fill()
             var textFrame = trait.frame.insetBy(dx: InterfaceScale.metric(8), dy: InterfaceScale.metric(4))
             if trait.value.emoji != nil || trait.value.emojiURL != nil {
                 let emojiFrame = CGRect(x: textFrame.minX, y: textFrame.minY + InterfaceScale.metric(2), width: InterfaceScale.metric(16), height: InterfaceScale.metric(16))
@@ -63,14 +54,6 @@ extension NativeTimelineRowPainter {
             }
             text(trait.value.label, in: textFrame, font: .interfaceSystemFont(ofSize: 14), color: foreground)
         }
-        NSGraphicsContext.restoreGraphicsState()
-        if card.hasCollapsedContent {
-            let fade = CGRect(x: card.frame.minX, y: card.contentBottom - InterfaceScale.metric(48), width: card.frame.width, height: InterfaceScale.metric(64))
-            NSGradient(starting: background.withAlphaComponent(0), ending: background)?.draw(in: fade, angle: 90)
-        }
-        if let details = card.detailsFrame, card.isExpanded {
-            text("Hide Details", in: details, font: .interfaceSystemFont(ofSize: 13, weight: .semibold), color: secondary, alignment: .center)
-        }
         if card.buttonFrame.height > 0, !isModalPreview {
             gradientButton(
                 title: card.buttonTitle, frame: card.buttonFrame,
@@ -80,40 +63,45 @@ extension NativeTimelineRowPainter {
                 foreground: outgoing ? .sakuraCordAccentColor : .sakuraCordLabelOnAccentColor, isEnabled: !card.isDisabled
             )
         }
-        NSGraphicsContext.restoreGraphicsState()
-        guard !isModalPreview, bubble == nil else { return }
-        NativeTimelineSemanticColor.opacity(.labelColor, 0.10).setStroke()
-        let border = NSBezierPath(roundedRect: card.frame.insetBy(dx: 0.5, dy: 0.5), xRadius: radius - 0.5, yRadius: radius - 0.5)
-        border.lineWidth = 1
-        border.stroke()
     }
 
     private static func inviteIdentityMedia(
-        _ card: NativeTimelineInviteLayout, background: NSColor, bubbleRegion bubble: NativeTimelineBubbleRegion?
+        _ card: NativeTimelineInviteLayout, bubbleRegion bubble: NativeTimelineBubbleRegion?, isModalPreview: Bool
     ) {
         let outgoing = bubble?.isOutgoing == true
+        let iconRadius = DiscordRichMessageMetrics.cardMediaCornerRadius
+        let iconShape = NSBezierPath(concentricRoundedRect: card.iconFrame, cornerRadius: iconRadius)
         if let invite = card.content {
-            if bubble == nil {
+            // The banner follows the card's top corners, or is rounded as
+            // media in a bubble, and fades to dark where the header text sits.
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(
+                concentricRoundedRect: bubble == nil ? card.frame : card.bannerFrame,
+                cornerRadius: bubble != nil ? iconRadius : isModalPreview ? 0 : NativeTimelineInviteLayout.cornerRadius
+            ).addClip()
+            NSBezierPath(rect: card.bannerFrame).addClip()
+            if let url = invite.bannerURL,
+               let image = MediaImageStore.shared.stillImage(for: .media(url, maximumPixelDimension: 1_024)) {
+                drawImage(image, in: card.bannerFrame, cornerRadius: 0, fillsFrame: true)
+            } else {
                 inviteGradient(card.gradientColor ?? 0x242424, in: card.bannerFrame)
-                background.setFill()
-                NSBezierPath(
-                    roundedRect: card.iconFrame.insetBy(dx: -InterfaceScale.metric(3), dy: -InterfaceScale.metric(3)),
-                    xRadius: InterfaceScale.metric(22),
-                    yRadius: InterfaceScale.metric(22)
-                ).fill()
             }
+            let fade = CGRect(x: card.bannerFrame.minX, y: card.iconFrame.minY - InterfaceScale.metric(32),
+                              width: card.bannerFrame.width, height: card.bannerFrame.maxY - card.iconFrame.minY + InterfaceScale.metric(32))
+            NSGradient(starting: .black.withAlphaComponent(0), ending: .black.withAlphaComponent(0.6))?.draw(in: fade, angle: 90)
+            NSGraphicsContext.restoreGraphicsState()
             if let url = invite.iconURL, let image = MediaImageStore.shared.stillImage(for: .media(url, maximumPixelDimension: 128)) {
                 NSGraphicsContext.saveGraphicsState()
-                NSBezierPath(roundedRect: card.iconFrame, xRadius: InterfaceScale.metric(19), yRadius: InterfaceScale.metric(19)).addClip()
+                iconShape.addClip()
                 drawImage(image, in: card.iconFrame, cornerRadius: 0, fillsFrame: true)
                 NSGraphicsContext.restoreGraphicsState()
             } else {
                 NSColor.black.setFill()
-                NSBezierPath(roundedRect: card.iconFrame, xRadius: InterfaceScale.metric(19), yRadius: InterfaceScale.metric(19)).fill()
+                iconShape.fill()
                 let initials = invite.name.split(separator: " ").prefix(3).compactMap(\.first).map(String.init).joined()
                 text(
                     initials,
-                    in: card.iconFrame.insetBy(dx: InterfaceScale.metric(3), dy: InterfaceScale.metric(19)),
+                    in: card.iconFrame.insetBy(dx: InterfaceScale.metric(3), dy: (card.iconFrame.height - InterfaceScale.metric(26)) / 2),
                     font: .interfaceSystemFont(ofSize: 20, weight: .semibold),
                     color: .white,
                     alignment: .center
@@ -121,7 +109,7 @@ extension NativeTimelineRowPainter {
             }
         } else if card.isUnavailable || bubble != nil {
             (outgoing ? NSColor.sakuraCordLabelOnAccentColor.withAlphaComponent(0.14) : NSColor.systemRed.withAlphaComponent(card.isUnavailable ? 0.12 : 0.04)).setFill()
-            NSBezierPath(concentricRoundedRect: card.iconFrame, cornerRadius: InterfaceScale.metric(12)).fill()
+            iconShape.fill()
             if bubble != nil {
                 systemSymbol(card.isUnavailable ? "envelope.badge.fill" : card.error == nil ? "clock" : "exclamationmark.circle",
                     in: card.iconFrame, color: outgoing ? .sakuraCordLabelOnAccentColor : card.isUnavailable ? .systemRed : .secondaryLabelColor,

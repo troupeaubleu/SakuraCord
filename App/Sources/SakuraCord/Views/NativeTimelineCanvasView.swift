@@ -120,7 +120,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
             case autoModAlert(NativeTimelineAutoModAlertLayout.Action)
             case component(NativeTimelineComponentLayout.ButtonRegion)
             case sakuraCordDeepLink(SakuraCordDeepLinkAction)
-            case invite(NativeTimelineInviteLayout, expands: Bool)
+            case invite(NativeTimelineInviteLayout)
             case fileCard(NativeTimelineFileCard)
 
             var isDisabled: Bool {
@@ -129,8 +129,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
                     region.isDisabled
                 case .sakuraCordDeepLink, .autoModAlert:
                     false
-                case let .invite(card, expands):
-                    !expands && card.isDisabled
+                case let .invite(card):
+                    card.isDisabled
                 case .fileCard:
                     false
                 }

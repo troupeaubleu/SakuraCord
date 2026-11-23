@@ -17,7 +17,7 @@ struct JoinServerView: View {
                 let card = NativeTimelineInviteLayout(reference: reference, index: 0, origin: .zero,
                     maximumWidth: width, source: model, isOwnMessage: false, fillsWidth: true)
                 ScrollView(.vertical) {
-                    JoinServerPreview(card: card) { activate(reference, card: card, expands: $0) }
+                    JoinServerPreview(card: card) { activate(reference, card: card) }
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .frame(height: min(card.frame.height, max(80, availableSize.height - 65)))
@@ -43,13 +43,9 @@ struct JoinServerView: View {
         } ?? false
     }
 
-    private func activate(_ reference: ServerInviteReference, card: NativeTimelineInviteLayout, expands: Bool) {
-        if expands {
-            if !model.serverInvites.expanded.insert(reference).inserted {
-                model.serverInvites.expanded.remove(reference)
-            }
-        } else if card.invite?.unsupportedJoinReason != nil,
-                  card.invite.flatMap({ model.serverRailGuildsByID[$0.guildID] }) == nil {
+    private func activate(_ reference: ServerInviteReference, card: NativeTimelineInviteLayout) {
+        if card.invite?.unsupportedJoinReason != nil,
+           card.invite.flatMap({ model.serverRailGuildsByID[$0.guildID] }) == nil {
             NSWorkspace.shared.open(reference.url)
         } else {
             model.startAccountChildTask(account: model.accountSession()) { model, _ in
@@ -124,21 +120,14 @@ private struct JoinServerFooter: View {
 
 private struct JoinServerPreview: View {
     let card: NativeTimelineInviteLayout
-    let activate: (Bool) -> Void
+    let activate: () -> Void
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             NativeInvitePreview(card: card)
                 .allowsHitTesting(false)
-            if let details = card.detailsFrame {
-                Button { activate(true) } label: { Color.clear.contentShape(Rectangle()) }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(card.isExpanded ? "Hide Details" : "Show Details")
-                    .frame(width: details.width, height: details.height)
-                    .offset(x: details.minX, y: details.minY)
-            }
             if card.buttonFrame.height > 0 {
-                Button(card.buttonTitle) { activate(false) }
+                Button(card.buttonTitle, action: activate)
                     .buttonStyle(NativeInvitePreviewButtonStyle(title: card.buttonTitle))
                     .accessibilityLabel(card.buttonTitle)
                     .disabled(card.isDisabled)

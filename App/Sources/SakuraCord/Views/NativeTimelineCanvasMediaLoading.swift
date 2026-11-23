@@ -359,6 +359,7 @@ extension NativeTimelineCanvasView {
         )
         for card in layouts[index].inviteRegions {
             if let url = card.content?.iconURL { keys.append(.media(url, maximumPixelDimension: 128)) }
+            if let url = card.content?.bannerURL { keys.append(.media(url, maximumPixelDimension: 1_024)) }
             if let url = card.content?.activity?.coverURL { keys.append(.media(url, maximumPixelDimension: 640)) }
             for case let url? in card.playerAvatars.map(\.url) { keys.append(.media(url, maximumPixelDimension: 32)) }
             if let invite = card.invite {

@@ -122,12 +122,12 @@ extension NativeTimelineInviteLayout {
         gradientColor = entry?.adaptiveColor
             ?? (content.activityInstanceID == nil ? nil : content.iconURL.flatMap(ProfileAvatarPaletteLoader.shared.cached)?.first)
         self.error = error
-        (isUnavailable, isExpanded, hasCollapsedContent) = (false, true, false)
+        isUnavailable = false
         (frame, bannerFrame, iconFrame, symbolFrame, buttonFrame) = (
             card.frame, card.bannerFrame, card.iconFrame, card.symbolFrame, card.buttonFrame
         )
-        (labels, countDots, traits, playerAvatars, contentBottom) = (card.labels, [], [], card.playerAvatars, card.frame.maxY)
-        (inviterAvatarFrame, detailsFrame) = (nil, nil)
+        (labels, countDots, traits, playerAvatars) = (card.labels, [], [], card.playerAvatars)
+        inviterAvatarFrame = nil
         (buttonTitle, isDisabled) = Self.action(for: invite, entry: entry, content: content, source: source)
     }
 }

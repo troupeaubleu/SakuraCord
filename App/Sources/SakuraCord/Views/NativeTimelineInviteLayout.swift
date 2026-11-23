@@ -6,6 +6,8 @@ struct NativeServerCardContent {
     let guildID: GuildID?
     let name: String
     let iconURL: URL?
+    /// The server's 16:9 banner, where one is known.
+    var bannerURL: URL?
     let inviter: User?
     let brandColor: UInt32?
     let description: String?
@@ -57,6 +59,7 @@ struct NativeServerCardContent {
         guildName = profile.name
         name = profile.name
         self.iconURL = iconURL
+        bannerURL = profile.bannerURL
         inviter = nil
         brandColor = profile.brandColor ?? adaptiveColor
         description = profile.description
@@ -67,7 +70,9 @@ struct NativeServerCardContent {
 }
 
 struct NativeTimelineInviteLayout {
-    static var cornerRadius: CGFloat { InterfaceScale.metric(28) }
+    /// Server cards share the embed card's shape.
+    static var cornerRadius: CGFloat { DiscordRichMessageMetrics.cardCornerRadius }
+    private static var spacing: CGFloat { InterfaceScale.metric(12) }
 
     struct Label {
         var text: String
@@ -76,6 +81,8 @@ struct NativeTimelineInviteLayout {
         var bold = false
         var secondary = false
         var lineHeight: CGFloat = 20
+        /// Set on the banner, where text is white over its fade.
+        var overlaysBanner = false
 
         func attributedText(color: NSColor) -> NSAttributedString {
             let paragraph = NSMutableParagraphStyle()
@@ -92,11 +99,6 @@ struct NativeTimelineInviteLayout {
         var value: ServerInvite.Trait
         var frame: CGRect
     }
-    private struct TraitArrangement {
-        var regions: [Trait]
-        var height: CGFloat
-        var overflow: Bool
-    }
     let reference: ServerInviteReference?
     let componentID: String
     let frame: CGRect
@@ -108,10 +110,6 @@ struct NativeTimelineInviteLayout {
     let labels: [Label]
     let traits: [Trait]
     let buttonFrame: CGRect
-    let detailsFrame: CGRect?
-    let isExpanded: Bool
-    let hasCollapsedContent: Bool
-    let contentBottom: CGFloat
     let invite: ServerInvite?
     let content: NativeServerCardContent?
     let buttonTitle: String
@@ -143,136 +141,128 @@ struct NativeTimelineInviteLayout {
         error = entry?.error ?? invite.flatMap {
             source?.presentationGuild($0.guildID) == nil ? $0.unsupportedJoinReason : nil
         }
-        isExpanded = preview != nil || reference.map { source?.isInviteExpanded($0) == true } == true
-        let width = fillsWidth || integratesWithBubble ? maximumWidth : min(isUnavailable ? InterfaceScale.metric(432) : InterfaceScale.metric(302), maximumWidth)
+        (buttonTitle, isDisabled) = Self.action(for: invite, entry: entry, source: source)
+        let width = fillsWidth || integratesWithBubble ? maximumWidth : min(InterfaceScale.metric(360), maximumWidth)
         let inset = integratesWithBubble ? 0 : InterfaceScale.metric(16)
-        let originX = origin.x, originY = origin.y, inner = max(1, width - inset * 2)
-        bannerFrame = CGRect(x: originX, y: originY, width: width, height: content == nil || integratesWithBubble ? 0 : InterfaceScale.metric(72))
-        iconFrame = integratesWithBubble
-            ? CGRect(x: originX, y: originY, width: InterfaceScale.metric(content == nil ? 32 : 48), height: InterfaceScale.metric(content == nil ? 32 : 48))
-            : isUnavailable ? CGRect(x: originX + InterfaceScale.metric(16), y: originY + InterfaceScale.metric(46), width: InterfaceScale.metric(48), height: InterfaceScale.metric(48))
-            : CGRect(x: originX + InterfaceScale.metric(19), y: originY + InterfaceScale.metric(41), width: InterfaceScale.metric(64), height: InterfaceScale.metric(64))
+        let originX = origin.x + inset, inner = max(1, width - inset * 2)
         var labels: [Label] = []
         var traits: [Trait] = []
-        var hiddenTraits = false
         var inviterAvatar: CGRect?
         var countDots: [CGRect] = []
-        var cursor = originY + inset
+        var cursor = origin.y + inset
+        let showsButton = preview == nil && !isUnavailable
+        let buttonWidth = showsButton ? Self.buttonWidth(buttonTitle, maximum: inner) : 0
         if let invite = content {
-            cursor = originY + (integratesWithBubble ? 0 : InterfaceScale.metric(116))
-            let identityInset = integratesWithBubble ? InterfaceScale.metric(60) : inset
-            inviterAvatar = Self.appendIdentity(invite, currentUserID: source?.currentUserID,
-                                                originX: originX + identityInset, width: inner - (integratesWithBubble ? identityInset : 0), cursor: &cursor, labels: &labels)
-            if integratesWithBubble { cursor = max(cursor, iconFrame.maxY) + InterfaceScale.metric(8) }
-            Self.appendCounts(invite, originX: originX + inset, width: inner, cursor: &cursor, labels: &labels, dots: &countDots)
+            // The banner is the card's header: a 5:2 crop of the 16:9 image
+            // carries the server's identity and the button along its faded lower edge.
+            bannerFrame = CGRect(x: origin.x, y: origin.y, width: width, height: (width * 2 / 5).rounded())
+            let padding = Self.spacing, iconSize = InterfaceScale.metric(48)
+            iconFrame = CGRect(x: origin.x + padding, y: bannerFrame.maxY - padding - iconSize, width: iconSize, height: iconSize)
+            buttonFrame = CGRect(x: bannerFrame.maxX - padding - buttonWidth, y: iconFrame.midY - Self.buttonHeight / 2,
+                                 width: buttonWidth, height: showsButton ? Self.buttonHeight : 0)
+            let headerX = iconFrame.maxX + Self.spacing
+            let headerWidth = max(1, bannerFrame.maxX - padding - headerX - (showsButton ? buttonWidth + Self.spacing : 0))
+            let nameHeight = Self.height(invite.name, width: headerWidth, size: 16, bold: true, lineHeight: 22)
+            let countsHeight = invite.onlineCount == nil && invite.memberCount == nil ? 0 : InterfaceScale.metric(18)
+            cursor = (iconFrame.midY - (nameHeight + countsHeight) / 2).rounded()
+            labels.append(.init(text: invite.name, frame: CGRect(x: headerX, y: cursor, width: headerWidth, height: nameHeight),
+                                size: 16, bold: true, lineHeight: 22, overlaysBanner: true))
+            cursor += nameHeight
+            Self.appendCounts(invite, originX: headerX, width: headerWidth, cursor: &cursor, labels: &labels, dots: &countDots)
+            cursor = bannerFrame.maxY + max(0, inset - Self.spacing)
             if let description = invite.description, !description.isEmpty {
-                cursor += InterfaceScale.metric(12)
+                cursor += Self.spacing
                 let height = Self.height(description, width: inner, size: 14)
-                labels.append(.init(text: description, frame: CGRect(x: originX + inset, y: cursor, width: inner, height: height), secondary: true))
+                labels.append(.init(text: description, frame: CGRect(x: originX, y: cursor, width: inner, height: height)))
                 cursor += height
             }
             if !invite.traits.isEmpty {
-                cursor += InterfaceScale.metric(8)
-                let arranged = Self.arrangeTraits(invite.traits, origin: CGPoint(x: originX + inset, y: cursor), width: inner, expanded: isExpanded)
-                traits = arranged.regions
-                hiddenTraits = arranged.overflow
-                cursor += arranged.height
+                cursor += Self.spacing
+                traits = Self.arrangeTraits(invite.traits, origin: CGPoint(x: originX, y: cursor), width: inner)
+                cursor = traits.map(\.frame.maxY).max() ?? cursor
             }
-        } else if integratesWithBubble {
-            let detailX = iconFrame.maxX + InterfaceScale.metric(12)
-            let detailWidth = max(1, originX + width - detailX)
-            labels.append(.init(text: isUnavailable ? "Invalid Invite" : entry?.error == nil ? "Loading invite…" : "Invite unavailable",
-                                frame: CGRect(x: detailX, y: cursor, width: detailWidth, height: InterfaceScale.metric(22)), size: 16, bold: true))
+            if self.invite != nil, let error {
+                cursor += Self.spacing
+                let height = Self.height(error, width: inner, size: 13)
+                labels.append(.init(text: error, frame: CGRect(x: originX, y: cursor, width: inner, height: height), size: 13))
+                cursor += height
+            }
+            inviterAvatar = Self.appendFooter(invite, currentUserID: source?.currentUserID, originX: originX, width: inner,
+                                              cursor: &cursor, labels: &labels)
+        } else {
+            let title = isUnavailable ? "Invalid Invite" : entry?.error == nil ? "Loading invite…" : "Invite unavailable"
+            let detail = isUnavailable ? (isOwnMessage ? "Try sending a new invite" : "Ask for a new invite") : entry?.error
+            if !integratesWithBubble {
+                labels.append(.init(text: isOwnMessage ? "You sent an invite, but" : "You've been invited, but",
+                                    frame: CGRect(x: originX, y: cursor, width: inner, height: InterfaceScale.metric(20)), secondary: true))
+                cursor += InterfaceScale.metric(28)
+            }
+            let iconSize = InterfaceScale.metric(integratesWithBubble ? 32 : 48)
+            iconFrame = CGRect(x: originX, y: cursor, width: iconSize, height: iconSize)
+            let detailX = isUnavailable || integratesWithBubble ? iconFrame.maxX + InterfaceScale.metric(12) : originX
+            let detailWidth = max(1, originX + inner - detailX)
+            labels.append(.init(text: title, frame: CGRect(x: detailX, y: cursor, width: detailWidth, height: InterfaceScale.metric(22)), size: 16, bold: true))
             cursor += InterfaceScale.metric(26)
-            if let detail = isUnavailable ? (isOwnMessage ? "Try sending a new invite" : "Ask for a new invite") : entry?.error {
+            if let detail {
                 let height = Self.height(detail, width: detailWidth, size: 14)
                 labels.append(.init(text: detail, frame: CGRect(x: detailX, y: cursor, width: detailWidth, height: height), secondary: true))
                 cursor += height
             }
-            cursor = max(cursor, iconFrame.maxY)
-        } else {
-            labels.append(.init(text: isOwnMessage ? "You sent an invite, but" : "You've been invited, but",
-                                frame: CGRect(x: originX + InterfaceScale.metric(16), y: cursor, width: inner, height: InterfaceScale.metric(20)), secondary: true))
-            cursor += InterfaceScale.metric(28)
-            let detailX = originX + (isUnavailable ? InterfaceScale.metric(80) : InterfaceScale.metric(16))
-            let detailWidth = max(1, inner - (isUnavailable ? InterfaceScale.metric(64) : 0))
-            labels.append(.init(text: isUnavailable ? "Invalid Invite" : entry?.error == nil ? "Loading invite…" : "Invite unavailable",
-                                frame: CGRect(x: detailX, y: cursor + (isUnavailable ? InterfaceScale.metric(6) : 0), width: detailWidth, height: InterfaceScale.metric(22)), size: 16, bold: true))
-            cursor += InterfaceScale.metric(26)
-            let detail = isUnavailable ? (isOwnMessage ? "Try sending a new invite" : "Ask for a new invite") : entry?.error
-            if let detail {
-                let height = Self.height(detail, width: detailWidth, size: 14)
-                labels.append(.init(text: detail, frame: CGRect(x: detailX, y: cursor + (isUnavailable ? InterfaceScale.metric(4) : 0), width: detailWidth, height: height), secondary: true))
-                cursor += height + (isUnavailable ? InterfaceScale.metric(8) : 0)
-            }
+            if isUnavailable || integratesWithBubble { cursor = max(cursor, iconFrame.maxY) }
+            bannerFrame = .zero
+            buttonFrame = CGRect(x: originX, y: cursor + Self.spacing, width: buttonWidth, height: showsButton ? Self.buttonHeight : 0)
+            if showsButton { cursor = buttonFrame.maxY }
         }
-        if invite != nil, let error {
-            cursor += InterfaceScale.metric(12)
-            let height = Self.height(error, width: inner, size: 13)
-            labels.append(.init(text: error, frame: CGRect(x: originX + inset, y: cursor, width: inner, height: height), size: 13))
-            cursor += height
-        }
-        let canCollapse = preview == nil && invite != nil && cursor - originY > InterfaceScale.metric(292) && error == nil
-        let collapsed = canCollapse && !isExpanded
-        hasCollapsedContent = collapsed
-        if collapsed { cursor = originY + InterfaceScale.metric(230) }
-        contentBottom = cursor
-        if canCollapse || hiddenTraits, isExpanded {
-            detailsFrame = CGRect(x: originX + inset, y: cursor + InterfaceScale.metric(8), width: inner, height: InterfaceScale.metric(24))
-            cursor += InterfaceScale.metric(32)
-        } else {
-            detailsFrame = collapsed ? CGRect(x: originX, y: originY, width: width, height: cursor - originY + InterfaceScale.metric(8))
-                : hiddenTraits ? traits.last?.frame : nil
-        }
-        let showsButton = preview == nil && !isUnavailable
-        buttonFrame = CGRect(x: originX + inset, y: cursor + InterfaceScale.metric(integratesWithBubble ? 12 : 16), width: inner, height: showsButton ? InterfaceScale.metric(32) : 0)
-        frame = CGRect(x: originX, y: originY, width: width, height: cursor + (showsButton ? InterfaceScale.metric(integratesWithBubble ? 44 : 64) : inset) - originY)
+        frame = CGRect(x: origin.x, y: origin.y, width: width, height: cursor + inset - origin.y)
         inviterAvatarFrame = inviterAvatar
         self.countDots = countDots
         self.labels = labels
         self.traits = traits
-        (buttonTitle, isDisabled) = Self.action(for: invite, entry: entry, source: source)
     }
 
-    private static func appendIdentity(_ invite: NativeServerCardContent, currentUserID: UserID?, originX: CGFloat, width: CGFloat,
-                                       cursor: inout CGFloat, labels: inout [Label]) -> CGRect? {
-        let nameHeight = height(invite.name, width: width, size: 16, bold: true)
-        labels.append(.init(text: invite.name, frame: CGRect(x: originX, y: cursor, width: width, height: nameHeight), size: 16, bold: true))
-        cursor += nameHeight
-        guard let inviter = invite.inviter else { return nil }
-        let text = inviter.id == currentUserID ? "You sent an invite to join \(invite.name)"
-            : "\(inviter.displayName) invited you to \(invite.name)"
-        let textHeight = height(text, width: width - InterfaceScale.metric(20), size: 14, lineHeight: 18)
-        labels.append(.init(
-            text: text,
-            frame: CGRect(x: originX + InterfaceScale.metric(20), y: cursor, width: width - InterfaceScale.metric(20), height: textHeight),
-            secondary: true,
-            lineHeight: 18
+    private static var buttonHeight: CGFloat { InterfaceScale.metric(32) }
+
+    /// The accented pill fits its title, with room for the rounded ends.
+    private static func buttonWidth(_ title: String, maximum: CGFloat) -> CGFloat {
+        min(maximum, max(
+            InterfaceScale.metric(80),
+            ceil(NativeTimelineRowLayout.measuredTextWidth(title, font: NativeTimelineComponentButtonMetrics.font) + buttonHeight)
         ))
-        let avatar = CGRect(x: originX, y: cursor + (textHeight - InterfaceScale.metric(16)) / 2, width: InterfaceScale.metric(16), height: InterfaceScale.metric(16))
-        cursor += textHeight
-        return avatar
     }
 
     private static func appendCounts(_ invite: NativeServerCardContent, originX: CGFloat, width: CGFloat, cursor: inout CGFloat,
                                      labels: inout [Label], dots: inout [CGRect]) {
         var countX = originX
         for count in [invite.onlineCount.map { "\($0.formatted()) Online" },
-                      invite.memberCount.map { "\($0.formatted()) \($0 == 1 ? "Member" : "Members")" }].compactMap({ $0 }) {
-            dots.append(CGRect(x: countX, y: cursor + InterfaceScale.metric(6), width: InterfaceScale.metric(8), height: InterfaceScale.metric(8)))
-            let textWidth = ceil((count as NSString).size(withAttributes: [.font: NSFont.interfaceSystemFont(ofSize: 14)]).width)
+                      invite.memberCount.map { "\($0.formatted()) \($0 == 1 ? "Member" : "Members")" }].compactMap(\.self) {
+            dots.append(CGRect(x: countX, y: cursor + InterfaceScale.metric(5), width: InterfaceScale.metric(8), height: InterfaceScale.metric(8)))
+            let textWidth = ceil((count as NSString).size(withAttributes: [.font: NSFont.interfaceSystemFont(ofSize: 13)]).width)
+            let labelX = countX + InterfaceScale.metric(12)
             labels.append(.init(
                 text: count,
-                frame: CGRect(x: countX + InterfaceScale.metric(12), y: cursor, width: min(textWidth + 1, originX + width - countX - InterfaceScale.metric(12)), height: InterfaceScale.metric(20)),
-                secondary: true
+                frame: CGRect(x: labelX, y: cursor, width: max(1, min(textWidth + 1, originX + width - labelX)), height: InterfaceScale.metric(18)),
+                size: 13, secondary: true, lineHeight: 18, overlaysBanner: true
             ))
             countX += textWidth + InterfaceScale.metric(20)
         }
-        if countX > originX { cursor += InterfaceScale.metric(20) }
-        guard let guildID = invite.guildID else { return }
-        labels.append(.init(text: "Est. \(guildID.createdAt.formatted(.dateTime.month(.abbreviated).year()))",
-                            frame: CGRect(x: originX, y: cursor, width: width, height: InterfaceScale.metric(20)), secondary: true))
-        cursor += InterfaceScale.metric(20)
+        if countX > originX { cursor += InterfaceScale.metric(18) }
+    }
+
+    /// Who sent the invite and when the server began, in small print at the end.
+    private static func appendFooter(_ invite: NativeServerCardContent, currentUserID: UserID?, originX: CGFloat, width: CGFloat,
+                                     cursor: inout CGFloat, labels: inout [Label]) -> CGRect? {
+        let sender = invite.inviter.map { $0.id == currentUserID ? "You sent this invite" : "\($0.displayName) invited you" }
+        let founded = invite.guildID.map { "Est. \($0.createdAt.formatted(.dateTime.month(.abbreviated).year()))" }
+        let text = [sender, founded].compactMap(\.self).joined(separator: " · ")
+        guard !text.isEmpty else { return nil }
+        cursor += spacing
+        let avatarSize = InterfaceScale.metric(16)
+        let textX = originX + (sender == nil ? 0 : avatarSize + InterfaceScale.metric(6))
+        let textHeight = height(text, width: max(1, originX + width - textX), size: 13, lineHeight: 18)
+        labels.append(.init(text: text, frame: CGRect(x: textX, y: cursor, width: max(1, originX + width - textX), height: textHeight),
+                            size: 13, secondary: true, lineHeight: 18))
+        defer { cursor += textHeight }
+        return sender == nil ? nil : CGRect(x: originX, y: cursor + InterfaceScale.metric(1), width: avatarSize, height: avatarSize)
     }
 
     static func action(for invite: ServerInvite?, entry: ServerInvitePresentationStore.Entry?,
@@ -294,33 +284,20 @@ struct NativeTimelineInviteLayout {
                 entry?.isLoading != false && invite == nil)
     }
 
-    private static func arrangeTraits(_ values: [ServerInvite.Trait], origin: CGPoint, width: CGFloat, expanded: Bool)
-        -> TraitArrangement {
+    private static func arrangeTraits(_ values: [ServerInvite.Trait], origin: CGPoint, width: CGFloat) -> [Trait] {
         var regions: [Trait] = []
         var cursorX = origin.x
         var cursorY = origin.y
-        let rowStep = InterfaceScale.metric(32)
         let traitHeight = InterfaceScale.metric(28)
         let gap = InterfaceScale.metric(4)
         for trait in values.prefix(5) {
             let labelWidth = (trait.label as NSString).size(withAttributes: [.font: NSFont.interfaceSystemFont(ofSize: 14)]).width
             let traitWidth = min(width, ceil(labelWidth) + InterfaceScale.metric(16) + (trait.emoji != nil || trait.emojiURL != nil ? InterfaceScale.metric(20) : 0))
-            if cursorX + traitWidth > origin.x + width, cursorX > origin.x { cursorX = origin.x; cursorY += rowStep }
+            if cursorX + traitWidth > origin.x + width, cursorX > origin.x { cursorX = origin.x; cursorY += traitHeight + gap }
             regions.append(.init(value: trait, frame: CGRect(x: cursorX, y: cursorY, width: traitWidth, height: traitHeight)))
             cursorX += traitWidth + gap
         }
-        let overflow = cursorY > origin.y + rowStep
-        if overflow, !expanded {
-            regions.removeAll { $0.frame.minY > origin.y + rowStep }
-            let moreWidth: CGFloat = InterfaceScale.metric(76)
-            while let last = regions.last, last.frame.minY == origin.y + rowStep,
-                  last.frame.maxX + gap + moreWidth > origin.x + width { regions.removeLast() }
-            let moreX = regions.last.flatMap { $0.frame.minY == origin.y + rowStep ? $0.frame.maxX + gap : nil } ?? origin.x
-            regions.append(.init(value: .init(label: "+\(values.count - regions.count) more"),
-                                frame: CGRect(x: moreX, y: origin.y + rowStep, width: moreWidth, height: traitHeight)))
-            cursorY = origin.y + rowStep
-        }
-        return TraitArrangement(regions: regions, height: cursorY + traitHeight - origin.y, overflow: overflow)
+        return regions
     }
 
     static func height(_ text: String, width: CGFloat, size: CGFloat, bold: Bool = false, lineHeight: CGFloat = 20) -> CGFloat {

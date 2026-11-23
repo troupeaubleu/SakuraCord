@@ -13,10 +13,6 @@ extension AppModel {
         serverInvites.entries[reference]
     }
 
-    func isInviteExpanded(_ reference: ServerInviteReference) -> Bool {
-        serverInvites.expanded.contains(reference)
-    }
-
     func isLeavingInviteGuild(_ guildID: GuildID) -> Bool {
         serverInvites.leaving.contains(guildID)
     }

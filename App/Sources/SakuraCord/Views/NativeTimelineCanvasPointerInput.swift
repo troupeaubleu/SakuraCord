@@ -434,8 +434,8 @@ extension NativeTimelineCanvasView {
                     )
                 case let .sakuraCordDeepLink(action):
                     _ = activateSakuraCordDeepLink(action, message: hit.message)
-                case let .invite(card, expands):
-                    activateInvite(card, message: hit.message, expands: expands)
+                case let .invite(card):
+                    activateInvite(card, message: hit.message)
                 case let .fileCard(card):
                     if card.part(of: hit.target, messageID: hit.message.id) == .card {
                         previewFileCard(card, message: hit.message, rowIndex: hit.rowIndex)
@@ -1259,15 +1259,11 @@ extension NativeTimelineCanvasView {
             x: point.x,
             y: point.y - rowOrigin
         )
-        for card in layouts[index].inviteRegions {
-            let isButton = card.buttonFrame.contains(local) && card.buttonFrame.height > 0
-            let expands = !isButton && card.detailsFrame?.contains(local) == true
-            if isButton || expands {
-                return ComponentButtonPointerHit(
-                    target: NativeTimelineComponentButtonTarget(messageID: row.id, componentID: card.componentID + (expands ? ":details" : "")),
-                    rowIndex: index, message: row.message, kind: .invite(card, expands: expands),
-                    frame: (expands ? card.detailsFrame! : card.buttonFrame).offsetBy(dx: 0, dy: rowOrigin))
-            }
+        if let card = layouts[index].inviteRegions.first(where: { $0.buttonFrame.contains(local) && $0.buttonFrame.height > 0 }) {
+            return ComponentButtonPointerHit(
+                target: NativeTimelineComponentButtonTarget(messageID: row.id, componentID: card.componentID),
+                rowIndex: index, message: row.message, kind: .invite(card),
+                frame: card.buttonFrame.offsetBy(dx: 0, dy: rowOrigin))
         }
         if let button = layouts[index].autoModAlert?.button(at: local) {
             return ComponentButtonPointerHit(

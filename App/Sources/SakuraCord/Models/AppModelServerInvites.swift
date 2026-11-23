@@ -18,7 +18,6 @@ final class ServerInvitePresentationStore {
     var entries: [ServerInviteReference: Entry] = [:]
     var joining: Set<GuildID> = []
     var leaving: Set<GuildID> = []
-    var expanded: Set<ServerInviteReference> = []
     let creation = ServerInviteCreationStore()
     var showsJoinDialog = false
     var leaveConfirmation: Guild?
@@ -38,7 +37,6 @@ final class ServerInvitePresentationStore {
         entries = [:]
         joining = []
         leaving = []
-        expanded = []
         queue = []
         activeLoads = 0
         showsJoinDialog = false
@@ -60,7 +58,6 @@ extension AppModel {
            let oldest = store.entries.filter({ !$0.value.isLoading })
             .min(by: { $0.value.updatedAt < $1.value.updatedAt })?.key {
             store.entries[oldest] = nil
-            store.expanded.remove(oldest)
         }
         var entry = store.entries[reference] ?? .init()
         entry.isLoading = true
