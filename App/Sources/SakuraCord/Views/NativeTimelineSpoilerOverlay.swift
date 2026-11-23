@@ -231,6 +231,7 @@ extension NativeTimelineCanvasView {
         applySpoilerOverlays(desired)
         // Revealing a file card uncovers its upload ring.
         reconcileUploadRings()
+        reconcileEmbedGalleryOverlays()
     }
 
     private func desiredSpoilerOverlays() -> [DesiredSpoilerOverlay] {

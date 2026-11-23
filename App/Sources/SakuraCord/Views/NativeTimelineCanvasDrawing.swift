@@ -439,6 +439,7 @@ extension NativeTimelineCanvasView {
         }
         reconcileHistoryPreview()
         presentRowsEnteringViewport()
+        reconcileEmbedGalleryOverlays()
         reconcileInlinePlayers()
         refreshMediaViewerTransition()
         // Supplementary Inbox rows are content, not hover presentation. Keep
@@ -470,6 +471,7 @@ extension NativeTimelineCanvasView {
     /// Moves the views hosted over rows onto where the rows are drawn now.
     func positionRowOverlays() {
         positionInlineVideoOverlays()
+        positionEmbedGalleryOverlays()
         reconcileVoiceMessageOverlay()
         reconcileActivityIndicators()
         positionSpoilerOverlays()
@@ -507,6 +509,7 @@ extension NativeTimelineCanvasView {
             animatedMediaRows.removeAll()
             inlineVideoRows.removeAll()
             removeInlineVideoOverlays()
+            removeEmbedGalleryOverlays()
             removeVoiceMessageOverlay()
             removeAnimatedMediaOverlays()
             removeActivityIndicators()
@@ -539,6 +542,7 @@ extension NativeTimelineCanvasView {
         super.viewDidMoveToWindow()
         restoreInboxKeyboardFocus()
         if window != nil {
+            reconcileEmbedGalleryOverlays()
             installReactionMouseMonitor()
             Task { @MainActor [weak self] in
                 await Task.yield()

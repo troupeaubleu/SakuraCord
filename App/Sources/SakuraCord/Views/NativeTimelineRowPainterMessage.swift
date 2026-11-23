@@ -626,6 +626,28 @@ extension NativeTimelineRowPainter {
                 )
             )
         }
+        if let gallery = region.gallery {
+            // A live gallery scrolls in its overlay; the row draws it only
+            // under a spoiler's blurred cover.
+            guard isCovered else { return }
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(concentricRoundedRect: gallery.viewportFrame, cornerRadius: gallery.cornerRadius).addClip()
+            for item in gallery.items {
+                let itemFrame = item.frame.offsetBy(dx: gallery.viewportFrame.minX, dy: gallery.viewportFrame.minY)
+                if itemFrame.minX >= gallery.viewportFrame.maxX { break }
+                drawMediaSurface(
+                    in: itemFrame,
+                    cornerRadius: item.cornerRadius,
+                    backdrop: NativeTimelineSemanticColor.opacity(.secondaryLabelColor, 0.10),
+                    image: MediaImageStore.shared.stillImage(for: .media(item.url)),
+                    fillsFrame: true,
+                    placeholder: item.placeholder,
+                    fallbackSymbol: nil
+                )
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            return
+        }
         // An inline-playing video draws its own loading surface.
         guard let frame = region.mediaFrame,
               let url = region.mediaURL,

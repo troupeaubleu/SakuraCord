@@ -136,7 +136,7 @@ extension NativeTimelineRowLayout {
             }
             let mediaFrames = layout.linkedImageRegions.map(\.frame)
                 + layout.attachmentRegions.map(\.frame)
-                + [layout.voiceMessageRegion?.frame].compactMap { $0 }
+                + [layout.attachmentGallery?.viewportFrame, layout.voiceMessageRegion?.frame].compactMap { $0 }
                 + layout.embedRegions.map(\.frame)
                 + layout.stickerFrames
             for frame in mediaFrames {
@@ -750,28 +750,7 @@ extension NativeTimelineRowLayout {
             )
             var regions: [String: AttachmentRegion] = [:]
             if !media.isEmpty {
-                if hasRichContent {
-                    verticalOffset += InterfaceScale.metric(8)
-                }
-                let galleryWidth = min(InterfaceScale.metric(500), max(InterfaceScale.metric(180), inlineMediaMaximumWidth))
-                let galleryFrames = MediaGalleryPlan.frames(
-                    count: media.count,
-                    width: galleryWidth,
-                    aspectRatios: media.map { RichMediaItem.aspectRatio(width: $0.width, height: $0.height) },
-                    intrinsicSizes: media.map { RichMediaItem.knownSize(width: $0.width, height: $0.height) ?? .zero },
-                    spacing: InterfaceScale.metric(4)
-                )
-                for (attachment, frame) in zip(media, galleryFrames) {
-                    regions[attachment.id] = AttachmentRegion(
-                        frame: frame.offsetBy(dx: contentX, dy: verticalOffset),
-                        attachment: attachment,
-                        previewKey: attachment.mediaKind == .video
-                            ? .videoPoster(attachment)
-                            : .attachment(attachment)
-                    )
-                }
-                verticalOffset += galleryFrames.map(\.maxY).max() ?? 0
-                hasRichContent = true
+                appendVisualAttachments(media, into: &regions)
             }
             for attachment in files {
                 if hasRichContent {
@@ -785,7 +764,11 @@ extension NativeTimelineRowLayout {
             result.attachmentRegions = message.attachments.compactMap { regions[$0.id] }
             if message.isUnconfirmedLocalSend, source?.attachmentUploads.tracks(nonce: message.nonce) == true {
                 result.uploadRings = NativeTimelineRowLayout.uploadRings(
-                    for: result.attachmentRegions, isInBubble: usesBubbles, isFailed: message.outboxState == .failed
+                    for: message.attachments,
+                    regions: result.attachmentRegions,
+                    attachmentGallery: result.attachmentGallery,
+                    isInBubble: usesBubbles,
+                    isFailed: message.outboxState == .failed
                 )
             }
         }
@@ -874,37 +857,7 @@ extension NativeTimelineRowLayout {
                 let visibleEmbeds = MessageEmbedPresentation.visibleEmbeds(for: message)
                 result.embedRegions.reserveCapacity(visibleEmbeds.count)
                 for embeds in MessageEmbedPresentation.groupedEmbeds(visibleEmbeds) {
-                    let embed = embeds[0]
-                    let embedY = richContentY
-                    if embed.type == "components" {
-                        if let region = NativeTimelineComponentLayout.make(
-                            message: message,
-                            components: embed.components ?? [],
-                            source: source,
-                            origin: CGPoint(x: contentX, y: embedY),
-                            maximumWidth: componentsMaximumWidth,
-                            integratesWithBubble: usesBubbles,
-                            drawsTopSeparator: usesBubbles && hasRichContent
-                        ) {
-                            result.componentLayouts.append(region)
-                            verticalOffset = region.frame.maxY
-                            hasRichContent = true
-                        }
-                        continue
-                    }
-                    let regions = NativeTimelineEmbedLayout.makeGroup(
-                        embeds: embeds,
-                        message: message,
-                        source: source,
-                        origin: CGPoint(x: contentX, y: embedY),
-                        maximumWidth: inlineMediaMaximumWidth,
-                        integratesWithBubble: usesBubbles,
-                        drawsTopSeparator: usesBubbles && hasRichContent
-                    )
-                    guard let region = regions.first else { continue }
-                    result.embedRegions.append(contentsOf: regions)
-                    verticalOffset = region.frame.maxY
-                    hasRichContent = true
+                    appendEmbedGroup(embeds)
                 }
             }
 
@@ -1397,5 +1350,188 @@ enum NativeTimelineCompactTimestampMetrics {
         }.max() ?? 0
         cachedWidth = (key, ceil(width))
         return ceil(width)
+    }
+}
+
+// Media galleries: attachment grids, scrolling galleries, and their page indicators.
+extension NativeTimelineRowLayout.MessageBuilder {
+    private mutating func appendVisualAttachments(
+        _ media: [Attachment],
+        into regions: inout [String: NativeTimelineRowLayout.AttachmentRegion]
+    ) {
+        let galleryWidth = min(InterfaceScale.metric(500), max(InterfaceScale.metric(180), inlineMediaMaximumWidth))
+        // A scrolling gallery's tile without a size is square.
+        let aspectRatios: [CGFloat] = media.map {
+            RichMediaItem.knownSize(width: $0.width, height: $0.height).map { $0.width / $0.height }
+                ?? (media.count > 2 ? 1 : 16 / 9)
+        }
+        if media.count > 2 {
+            appendScrollingAttachmentGallery(media, aspectRatios: aspectRatios, galleryWidth: galleryWidth)
+        } else {
+            if hasRichContent {
+                verticalOffset += InterfaceScale.metric(8)
+            }
+            let galleryFrames = MediaGalleryPlan.frames(
+                count: media.count,
+                width: galleryWidth,
+                aspectRatios: aspectRatios,
+                intrinsicSizes: media.map { RichMediaItem.knownSize(width: $0.width, height: $0.height) ?? .zero },
+                spacing: InterfaceScale.metric(4)
+            )
+            for (attachment, frame) in zip(media, galleryFrames) {
+                regions[attachment.id] = NativeTimelineRowLayout.AttachmentRegion(
+                    frame: frame.offsetBy(dx: contentX, dy: verticalOffset),
+                    attachment: attachment,
+                    previewKey: attachment.mediaKind == .video
+                        ? .videoPoster(attachment)
+                        : .attachment(attachment)
+                )
+            }
+            verticalOffset += galleryFrames.map(\.maxY).max() ?? 0
+        }
+        hasRichContent = true
+    }
+
+    /// More than two attachments scroll sideways in one row, bleeding to the
+    /// timeline's edges outside bubbles.
+    private mutating func appendScrollingAttachmentGallery(
+        _ media: [Attachment],
+        aspectRatios: [CGFloat],
+        galleryWidth: CGFloat
+    ) {
+        let viewportX = usesBubbles ? contentX : 0
+        let viewportWidth = usesBubbles ? galleryWidth : width
+        let tileViewportWidth = usesBubbles
+            ? galleryWidth
+            : max(InterfaceScale.metric(180), width - contentX - trailingInspectorInset - horizontalInset)
+        let leadingContentInset: CGFloat = usesBubbles ? 0 : contentX
+        let trailingInset: CGFloat = usesBubbles ? 0 : trailingInspectorInset + horizontalInset
+        let leadingButtonInset: CGFloat = usesBubbles ? 0 : leadingInset
+        let trailingButtonInset: CGFloat = usesBubbles ? 0 : trailingInspectorInset
+        let maskedCorners: CACornerMask = usesBubbles
+            ? [.layerMinXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMinYCorner, .layerMaxXMaxYCorner]
+            : []
+        let galleryHeight = NativeTimelineEmbedLayout.horizontalGalleryHeight(forWidth: tileViewportWidth)
+        let frames = NativeTimelineEmbedLayout.horizontalGalleryFrames(
+            aspectRatios: aspectRatios,
+            viewportWidth: tileViewportWidth,
+            height: galleryHeight,
+            spacing: InterfaceScale.metric(4),
+            leadingInset: leadingContentInset
+        )
+        let galleryContentWidth = (frames.last?.maxX ?? (leadingContentInset + tileViewportWidth)) + trailingInset
+        if !hasRichContent, galleryContentWidth - viewportWidth > 1 {
+            appendGalleryPageIndicator(itemCount: media.count, scope: .attachments)
+        }
+        if hasRichContent {
+            verticalOffset += InterfaceScale.metric(8)
+        }
+        let items = zip(media, frames).map { attachment, frame in
+            let mediaKey = (attachment.mediaKind == .video
+                ? MediaImageKey.videoPoster(attachment)
+                : MediaImageKey.attachment(attachment))
+                ?? .media(attachment.proxyURL ?? attachment.url)
+            return NativeTimelineRowLayout.EmbedRegion.GalleryItem(
+                id: attachment.id,
+                frame: frame,
+                url: attachment.proxyURL ?? attachment.url,
+                mediaKey: mediaKey,
+                placeholder: .init(attachment),
+                cornerRadius: NativeTimelineRowPainter.attachmentCornerRadius,
+                accessibilityLabel: attachment.description ?? attachment.title ?? attachment.filename,
+                isVideo: attachment.mediaKind == .video,
+                isSpoiler: attachment.isSpoiler
+            )
+        }
+        result.attachmentGallery = NativeTimelineRowLayout.EmbedRegion.Gallery(
+            viewportFrame: CGRect(
+                x: viewportX,
+                y: verticalOffset,
+                width: viewportWidth,
+                height: galleryHeight
+            ),
+            contentWidth: galleryContentWidth,
+            leadingButtonInset: leadingButtonInset,
+            trailingButtonInset: trailingButtonInset,
+            cornerRadius: NativeTimelineRowPainter.attachmentCornerRadius,
+            maskedCorners: maskedCorners,
+            opacity: CGFloat(MessageOutboxPresentation.mediaOpacity(for: message.outboxState)),
+            items: items
+        )
+        verticalOffset += galleryHeight
+    }
+
+    private mutating func appendEmbedGroup(_ embeds: [MessageEmbed]) {
+        let embed = embeds[0]
+        let embedY = richContentY
+        if embed.type == "components" {
+            if let region = NativeTimelineComponentLayout.make(
+                message: message,
+                components: embed.components ?? [],
+                source: source,
+                origin: CGPoint(x: contentX, y: embedY),
+                maximumWidth: componentsMaximumWidth,
+                integratesWithBubble: usesBubbles,
+                drawsTopSeparator: usesBubbles && hasRichContent
+            ) {
+                result.componentLayouts.append(region)
+                verticalOffset = region.frame.maxY
+                hasRichContent = true
+            }
+            return
+        }
+        func makeEmbedRegions(at originY: CGFloat) -> [NativeTimelineRowLayout.EmbedRegion] {
+            NativeTimelineEmbedLayout.makeGroup(
+                embeds: embeds,
+                message: message,
+                source: source,
+                layout: NativeTimelineEmbedLayout.GroupLayout(
+                    origin: CGPoint(x: contentX, y: originY),
+                    maximumWidth: inlineMediaMaximumWidth,
+                    bareGalleryOriginX: usesBubbles ? nil : 0,
+                    bareGalleryMaximumWidth: usesBubbles ? nil : width,
+                    bareGalleryLeadingInset: usesBubbles ? 0 : contentX,
+                    leadingButtonInset: usesBubbles ? 0 : leadingInset,
+                    trailingInset: usesBubbles ? 0 : trailingInspectorInset + horizontalInset,
+                    trailingButtonInset: usesBubbles ? 0 : trailingInspectorInset,
+                    integratesWithBubble: usesBubbles,
+                    drawsTopSeparator: usesBubbles && hasRichContent
+                )
+            )
+        }
+        var regions = makeEmbedRegions(at: embedY)
+        if !hasRichContent,
+           let gallery = regions.first?.gallery,
+           gallery.contentWidth - gallery.viewportFrame.width > 1
+        {
+            appendGalleryPageIndicator(itemCount: gallery.items.count, scope: .embed(embed.id))
+            regions = makeEmbedRegions(at: verticalOffset + InterfaceScale.metric(8))
+        }
+        guard let region = regions.first else { return }
+        result.embedRegions.append(contentsOf: regions)
+        verticalOffset = region.frame.maxY
+        hasRichContent = true
+    }
+
+    private mutating func appendGalleryPageIndicator(
+        itemCount: Int,
+        scope: NativeTimelineRowLayout.GalleryPageIndicator.Scope
+    ) {
+        let minimumHeight = InterfaceScale.metric(14)
+        let avatarClearance = (result.avatarFrame?.maxY ?? 0) - InterfaceScale.metric(4) - verticalOffset
+        let indicatorHeight = max(minimumHeight, avatarClearance)
+        let frame = CGRect(
+            x: contentX,
+            y: verticalOffset,
+            width: contentWidth,
+            height: indicatorHeight
+        )
+        result.galleryPageIndicator = NativeTimelineRowLayout.GalleryPageIndicator(
+            frame: frame,
+            itemCount: itemCount,
+            scope: scope
+        )
+        verticalOffset = frame.maxY
+        hasRichContent = true
     }
 }

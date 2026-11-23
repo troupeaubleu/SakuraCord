@@ -22,20 +22,42 @@ extension NativeTimelineRowLayout {
         return ring.isFailed || uploads?.isUploading(nonce: nonce, attachmentID: attachmentID) == true ? ring : nil
     }
 
-    static func uploadRings(for regions: [AttachmentRegion], isInBubble: Bool, isFailed: Bool) -> [UploadRing] {
-        regions.map { region in
-            let attachment = region.attachment
-            guard attachment.mediaKind.isVisual else {
-                let card = NativeTimelineFileCard(frame: region.frame, attachment: attachment, isInBubble: isInBubble)
-                return UploadRing(attachmentID: attachment.id, frame: card.buttonFrame, mediaFrame: nil, isFailed: isFailed)
+    static func uploadRings(
+        for attachments: [Attachment],
+        regions: [AttachmentRegion],
+        attachmentGallery: EmbedRegion.Gallery?,
+        isInBubble: Bool,
+        isFailed: Bool
+    ) -> [UploadRing] {
+        let side = AttachmentUploadRing.diameter + InterfaceScale.metric(8)
+        return attachments.compactMap { attachment in
+            if let region = regions.first(where: { $0.attachment.id == attachment.id }) {
+                guard attachment.mediaKind.isVisual else {
+                    let card = NativeTimelineFileCard(frame: region.frame, attachment: attachment, isInBubble: isInBubble)
+                    return UploadRing(attachmentID: attachment.id, frame: card.buttonFrame, mediaFrame: nil, isFailed: isFailed)
+                }
+                return UploadRing(
+                    attachmentID: attachment.id,
+                    frame: CGRect(x: region.frame.midX - side / 2, y: region.frame.midY - side / 2, width: side, height: side),
+                    mediaFrame: region.frame,
+                    isFailed: isFailed
+                )
             }
-            let side = AttachmentUploadRing.diameter + InterfaceScale.metric(8)
-            return UploadRing(
-                attachmentID: attachment.id,
-                frame: CGRect(x: region.frame.midX - side / 2, y: region.frame.midY - side / 2, width: side, height: side),
-                mediaFrame: region.frame,
-                isFailed: isFailed
-            )
+            if let gallery = attachmentGallery,
+               let item = gallery.items.first(where: { $0.id == attachment.id })
+            {
+                let mediaFrame = item.frame.offsetBy(
+                    dx: gallery.viewportFrame.minX,
+                    dy: gallery.viewportFrame.minY
+                )
+                return UploadRing(
+                    attachmentID: attachment.id,
+                    frame: CGRect(x: mediaFrame.midX - side / 2, y: mediaFrame.midY - side / 2, width: side, height: side),
+                    mediaFrame: mediaFrame,
+                    isFailed: isFailed
+                )
+            }
+            return nil
         }
     }
 }
@@ -196,12 +218,32 @@ extension NativeTimelineCanvasView {
                   let message = items[index].messageRow?.message,
                   let nonce = message.nonce
             else { return }
-            visibleRows.insert(items[index].identifier)
+            let identifier = items[index].identifier
+            visibleRows.insert(identifier)
             let origin = displayedRowOrigin(at: index)
+            let galleryKey = EmbedGalleryOverlayKey(row: identifier, scope: .attachments)
+            let galleryScrollX = embedGalleryOverlays[galleryKey]?.currentScrollOffsetX
+                ?? embedGalleryScrollOffsets[galleryKey]
+                ?? 0
             for ring in layout.uploadRings
             where layout.activeUploadRing(for: ring.attachmentID, uploads: uploads, nonce: nonce) != nil {
                 if hidesUploadRing(ring, of: message) { continue }
-                let key = UploadRingKey(row: items[index].identifier, attachmentID: ring.attachmentID)
+                let resolvedFrame: CGRect
+                if let gallery = layout.attachmentGallery,
+                   let mediaFrame = ring.mediaFrame,
+                   gallery.items.contains(where: { $0.id == ring.attachmentID })
+                {
+                    let scrolled = mediaFrame.offsetBy(dx: -galleryScrollX, dy: 0)
+                    let clipped = scrolled.intersection(gallery.viewportFrame)
+                    guard !clipped.isNull,
+                          clipped.width >= AttachmentUploadRing.diameter,
+                          clipped.height >= AttachmentUploadRing.diameter
+                    else { continue }
+                    resolvedFrame = clipped
+                } else {
+                    resolvedFrame = ring.mediaFrame ?? ring.frame
+                }
+                let key = UploadRingKey(row: identifier, attachmentID: ring.attachmentID)
                 shown.insert(key)
                 let view = uploadRings[key] ?? {
                     let view = NativeTimelineUploadRingView(dimsMedia: ring.mediaFrame != nil)
@@ -209,7 +251,7 @@ extension NativeTimelineCanvasView {
                     uploadRings[key] = view
                     return view
                 }()
-                view.frame = (ring.mediaFrame ?? ring.frame).offsetBy(dx: 0, dy: origin)
+                view.frame = resolvedFrame.offsetBy(dx: 0, dy: origin)
                 view.setColor(Self.uploadRingColor(ring, isOutgoing: layout.bubbleRegion?.isOutgoing == true))
                 view.isFailed = ring.isFailed
                 // A press held across a glide doesn't act on its release.

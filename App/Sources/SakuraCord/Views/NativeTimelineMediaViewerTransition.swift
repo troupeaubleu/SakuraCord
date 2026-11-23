@@ -104,7 +104,8 @@ extension NativeTimelineCanvasView {
             key: MediaImageKey,
             frame: CGRect?,
             cornerRadius: CGFloat,
-            fillsFrame: Bool
+            fillsFrame: Bool,
+            clipFrame: CGRect? = nil
         ) {
             guard imageItemIDs.contains(itemID),
                   previousSources.map({ $0[itemID] != nil }) ?? true,
@@ -118,10 +119,13 @@ extension NativeTimelineCanvasView {
                 frame: frame,
                 rowOrigin: rowOrigin,
                 cornerRadius: cornerRadius,
-                fillsFrame: fillsFrame
+                fillsFrame: fillsFrame,
+                clipFrame: clipFrame
             )
         }
-
+        for item in gallerySources(for: presentation, imageItemIDs: imageItemIDs, rowIndex: rowIndex) {
+            insert(item.id, key: item.key, frame: item.frame, cornerRadius: item.cornerRadius, fillsFrame: true, clipFrame: item.clipFrame)
+        }
         for region in layout.attachmentRegions {
             guard let key = MediaImageKey.attachment(
                 region.attachment
@@ -171,7 +175,8 @@ extension NativeTimelineCanvasView {
             }
         }
         for region in layout.embedRegions {
-            guard !region.mediaIsVideo,
+            guard region.gallery == nil,
+                  !region.mediaIsVideo,
                   let url = region.mediaURL
             else { continue }
             for item in presentation.items where imageItemIDs.contains(item.id)
@@ -189,21 +194,80 @@ extension NativeTimelineCanvasView {
         return (images, sources)
     }
 
+    /// A scrolling gallery item the viewer shows, under the viewer's ID, at
+    /// the gallery's scrolled place and clipped to the gallery.
+    private struct GallerySource {
+        let id: String
+        let key: MediaImageKey
+        let frame: CGRect
+        let cornerRadius: CGFloat
+        let clipFrame: CGRect
+    }
+
+    private func gallerySources(
+        for presentation: MediaViewerPresentation,
+        imageItemIDs: Set<String>,
+        rowIndex: Int
+    ) -> [GallerySource] {
+        let layout = layouts[rowIndex]
+        let galleries = [layout.attachmentGallery.map { ($0, EmbedGalleryOverlayKey.Scope.attachments) }]
+            + layout.embedRegions.map { region in region.gallery.map { ($0, .embed(region.embedID)) } }
+        return galleries.compactMap(\.self).flatMap { gallery, scope in
+            let key = EmbedGalleryOverlayKey(row: items[rowIndex].identifier, scope: scope)
+            let scrollOffsetX = embedGalleryOverlays[key]?.currentScrollOffsetX ?? embedGalleryScrollOffsets[key] ?? 0
+            return gallery.items.compactMap { item in
+                // An attachment keeps its ID in the viewer; an embed's image
+                // is found by its URL.
+                let itemID = scope == .attachments
+                    ? (item.isVideo ? nil : item.id)
+                    : presentation.items.first { imageItemIDs.contains($0.id) && ($0.url == item.url || $0.previewURL == item.url) }?.id
+                return itemID.map { id in
+                    GallerySource(
+                        id: id,
+                        key: item.mediaKey,
+                        frame: item.frame.offsetBy(dx: gallery.viewportFrame.minX - scrollOffsetX, dy: gallery.viewportFrame.minY),
+                        cornerRadius: item.cornerRadius,
+                        clipFrame: gallery.viewportFrame
+                    )
+                }
+            }
+        }
+    }
+
     private func timelineTransitionSource(
         itemID: String,
         image: NSImage,
         frame: CGRect?,
         rowOrigin: CGFloat,
         cornerRadius: CGFloat,
-        fillsFrame: Bool
+        fillsFrame: Bool,
+        clipFrame: CGRect? = nil
     ) -> MediaViewerTransitionSource? {
         guard window != nil, let frame else { return nil }
         let frameInCanvas = frame.offsetBy(dx: 0, dy: rowOrigin)
+        let visibleViewport: CGRect
+        if let clipFrame {
+            let clipInCanvas = clipFrame.offsetBy(dx: 0, dy: rowOrigin)
+            let intersection = visibleRect.intersection(clipInCanvas)
+            if intersection.isNull {
+                return MediaViewerTransitionSource(
+                    itemID: itemID,
+                    image: image,
+                    frameInWindow: convert(frameInCanvas, to: nil),
+                    visibleFrameInWindow: .zero,
+                    cornerRadius: cornerRadius,
+                    fillsFrame: fillsFrame
+                )
+            }
+            visibleViewport = intersection
+        } else {
+            visibleViewport = visibleRect
+        }
         return MediaViewerTransitionSource(
             itemID: itemID,
             image: image,
             frameInWindow: convert(frameInCanvas, to: nil),
-            visibleFrameInWindow: convert(visiblePart(of: frameInCanvas), to: nil),
+            visibleFrameInWindow: convert(visiblePart(of: frameInCanvas, in: visibleViewport), to: nil),
             cornerRadius: cornerRadius,
             fillsFrame: fillsFrame
         )
@@ -212,8 +276,8 @@ extension NativeTimelineCanvasView {
     /// The part of a card the viewport shows. A card scrolled out keeps an
     /// empty part on the viewport's nearest edge, where a zoom heading to it
     /// collapses rather than jumping.
-    private func visiblePart(of frame: CGRect) -> CGRect {
-        let viewport = visibleRect
+    private func visiblePart(of frame: CGRect, in viewport: CGRect? = nil) -> CGRect {
+        let viewport = viewport ?? visibleRect
         let minX = min(max(frame.minX, viewport.minX), viewport.maxX)
         let maxX = max(min(frame.maxX, viewport.maxX), viewport.minX)
         let minY = min(max(frame.minY, viewport.minY), viewport.maxY)
@@ -372,12 +436,14 @@ extension NativeTimelineCanvasView {
         // The card's shape as the zoom draws it: its image clipped to the
         // card's rounded frame.
         let frame = convert(source.frameInWindow, from: nil)
+        let visibleFrame = convert(source.visibleFrameInWindow, from: nil)
         let imageFrame = MediaViewerLayoutPolicy.imageFrame(
             imageSize: source.image.size, in: frame, fillsFrame: source.fillsFrame
         )
         let card = NSBezierPath(concentricRoundedRect: convertToLayer(frame), cornerRadius: source.cornerRadius)
             .cgPath
             .intersection(CGPath(rect: convertToLayer(imageFrame), transform: nil))
+            .intersection(CGPath(rect: convertToLayer(visibleFrame), transform: nil))
         let path = CGMutablePath()
         path.addRect(layer.bounds)
         path.addPath(card)

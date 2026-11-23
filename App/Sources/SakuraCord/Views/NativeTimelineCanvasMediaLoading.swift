@@ -185,6 +185,7 @@ extension NativeTimelineCanvasView {
             if !dirtyRect.isNull {
                 self.setNeedsDisplay(dirtyRect)
             }
+            self.refreshEmbedGalleryMedia(for: identifiers)
             self.refreshSendTransitionContent(for: identifiers)
         }
     }
@@ -350,6 +351,9 @@ extension NativeTimelineCanvasView {
         appendMessageTextMediaKeys(for: row, layout: layouts[index], into: &keys)
         // A hidden spoiler still loads: its cover is the item, blurred.
         keys += layouts[index].attachmentRegions.compactMap(\.previewKey)
+        if let gallery = layouts[index].attachmentGallery {
+            keys += gallery.items.map(\.mediaKey)
+        }
         appendEmbedMediaKeys(
             layouts[index].embedRegions,
             concealedEmbeds: NativeTimelineSpoilerConcealmentPolicy.concealedEmbeds(
@@ -460,6 +464,11 @@ extension NativeTimelineCanvasView {
             }
             for textRegion in region.textRegions {
                 appendInlineMediaKeys(from: textRegion.text.value, model: model, into: &keys)
+            }
+            if let gallery = region.gallery {
+                for item in gallery.items {
+                    keys.append(.media(item.url))
+                }
             }
             // A covered video's poster is what its spoiler cover blurs.
             if concealedEmbeds[region.embedID] != nil || !region.mediaIsVideo || !region.mediaAutoplaysInline,

@@ -151,7 +151,7 @@ nonisolated enum MessageEmbedPresentation {
         var groups: [[MessageEmbed]] = []
         for embed in embeds {
             if let previous = groups.last,
-               previous.count < 4,
+               previous.count < 20,
                let first = previous.first,
                let url = first.url,
                first.image != nil, first.video == nil,

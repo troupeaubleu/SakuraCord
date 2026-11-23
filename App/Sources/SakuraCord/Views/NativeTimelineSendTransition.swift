@@ -902,9 +902,16 @@ extension NativeTimelineCanvasView {
         }
         let targetInWindow = toWindow(target)
         guard convert(visibleRect, to: nil).intersects(targetInWindow) else { return nil }
-        let flyingAttachments = Set(source.attachments.indices.filter {
-            source.attachments[$0] != nil && layout.attachmentRegions.indices.contains($0)
-        })
+        let targets: [Int: NativeTimelineRowLayout.AttachmentTransitionTarget] = Dictionary(
+            uniqueKeysWithValues: source.attachments.indices.compactMap { attachmentIndex in
+                guard source.attachments[attachmentIndex] != nil,
+                      row.message.attachments.indices.contains(attachmentIndex),
+                      let target = layout.attachmentTransitionTarget(for: row.message.attachments[attachmentIndex])
+                else { return nil }
+                return (attachmentIndex, target)
+            }
+        )
+        let flyingAttachments = Set(targets.keys)
         let toOverlay = { (rect: CGRect) in overlay.convert(rect, from: nil) }
         // A file's tile becomes its card, which the row leaves to it until it lands.
         let cards = sendTransitionCards(
@@ -917,7 +924,7 @@ extension NativeTimelineCanvasView {
         // Any other preview that fades out, such as a video with no poster
         // yet, reveals what the bubble draws there instead.
         let fadingAttachments = flyingAttachments.filter {
-            layout.attachmentRegions[$0].previewKey == nil && cards[$0] == nil && covers[$0] == nil
+            targets[$0]?.previewKey == nil && cards[$0] == nil && covers[$0] == nil
         }
         guard let content = sendTransitionContent(
             item: items[index],
@@ -938,31 +945,15 @@ extension NativeTimelineCanvasView {
                 CGPoint(x: targetFrame.minX, y: targetFrame.maxY)
             )
         }
-        let mediaOpacity = Float(MessageOutboxPresentation.mediaOpacity(for: row.message.outboxState))
-        let pieces = flyingAttachments.sorted().map { attachmentIndex in
-            let attachmentRegion = layout.attachmentRegions[attachmentIndex]
-            let attachmentID = attachmentRegion.attachment.id
-            let card = cards[attachmentIndex]
-            return NativeTimelineSendTransitionOverlay.Piece(
-                index: attachmentIndex,
-                frame: toOverlay(toWindow(card?.card.frame ?? attachmentRegion.frame)),
-                cornerRadius: card?.card.cornerRadius ?? NativeTimelineRowPainter.attachmentCornerRadius,
-                opacity: mediaOpacity,
-                fadesOut: fadingAttachments.contains(attachmentIndex),
-                uploadRing: sendTransitionUploadRing(for: attachmentID, of: row.message, layout: layout).map { ring in
-                    let frame = toOverlay(toWindow(ring.frame))
-                    var color = CGColor.white
-                    effectiveAppearance.performAsCurrentDrawingAppearance {
-                        color = Self.uploadRingColor(ring, isOutgoing: layout.bubbleRegion?.isOutgoing == true).cgColor
-                    }
-                    return .init(
-                        attachmentID: attachmentID, center: CGPoint(x: frame.midX, y: frame.midY),
-                        color: color, dimsFile: ring.mediaFrame != nil
-                    )
-                },
-                card: card?.morph ?? covers[attachmentIndex].map { .init(image: $0, iconFrame: nil) }
-            )
-        }
+        let pieces = sendTransitionPieces(
+            targets: targets,
+            cards: cards,
+            covers: covers,
+            fadingAttachments: fadingAttachments,
+            message: row.message,
+            layout: layout,
+            toOverlay: { toOverlay(toWindow($0)) }
+        )
         let bubble = layout.bubbleRegion.map { region in
             var fillColor = NSColor.clear.cgColor
             effectiveAppearance.performAsCurrentDrawingAppearance {
@@ -989,6 +980,42 @@ extension NativeTimelineCanvasView {
             pieces: pieces
         )
         return (geometry, targetInWindow)
+    }
+
+    private func sendTransitionPieces(
+        targets: [Int: NativeTimelineRowLayout.AttachmentTransitionTarget],
+        cards: [Int: (card: NativeTimelineFileCard, morph: NativeTimelineSendTransitionOverlay.Card)],
+        covers: [Int: NSImage],
+        fadingAttachments: Set<Int>,
+        message: Message,
+        layout: NativeTimelineRowLayout,
+        toOverlay: (CGRect) -> CGRect
+    ) -> [NativeTimelineSendTransitionOverlay.Piece] {
+        let mediaOpacity = Float(MessageOutboxPresentation.mediaOpacity(for: message.outboxState))
+        return targets.keys.sorted().compactMap { attachmentIndex -> NativeTimelineSendTransitionOverlay.Piece? in
+            guard let attachmentTarget = targets[attachmentIndex] else { return nil }
+            let attachmentID = attachmentTarget.attachment.id
+            let card = cards[attachmentIndex]
+            return NativeTimelineSendTransitionOverlay.Piece(
+                index: attachmentIndex,
+                frame: toOverlay(card?.card.frame ?? attachmentTarget.frame),
+                cornerRadius: card?.card.cornerRadius ?? attachmentTarget.cornerRadius,
+                opacity: mediaOpacity,
+                fadesOut: fadingAttachments.contains(attachmentIndex),
+                uploadRing: sendTransitionUploadRing(for: attachmentID, of: message, layout: layout).map { ring in
+                    let frame = toOverlay(ring.frame)
+                    var color = CGColor.white
+                    effectiveAppearance.performAsCurrentDrawingAppearance {
+                        color = Self.uploadRingColor(ring, isOutgoing: layout.bubbleRegion?.isOutgoing == true).cgColor
+                    }
+                    return .init(
+                        attachmentID: attachmentID, center: CGPoint(x: frame.midX, y: frame.midY),
+                        color: color, dimsFile: ring.mediaFrame != nil
+                    )
+                },
+                card: card?.morph ?? covers[attachmentIndex].map { .init(image: $0, iconFrame: nil) }
+            )
+        }
     }
 
     private func sendTransitionUploadRing(
@@ -1116,6 +1143,7 @@ extension NativeTimelineCanvasView {
             // overlay placed or laid out later leaves its media bare for a
             // frame.
             reconcileUploadRings()
+            reconcileEmbedGalleryOverlays()
             uploadRings.values.forEach { $0.layoutSubtreeIfNeeded() }
         }
         CATransaction.commit()
@@ -1310,10 +1338,11 @@ extension NativeTimelineCanvasView {
         rowFrame: CGRect,
         toOverlay: (CGRect) -> CGRect
     ) -> [Int: (card: NativeTimelineFileCard, morph: NativeTimelineSendTransitionOverlay.Card)] {
+        guard let attachments = item.messageRow?.message.attachments else { return [:] }
         let fileCards = layout.fileCards
         var cards: [Int: (card: NativeTimelineFileCard, morph: NativeTimelineSendTransitionOverlay.Card)] = [:]
-        for attachmentIndex in attachmentIndexes {
-            let attachmentID = layout.attachmentRegions[attachmentIndex].attachment.id
+        for attachmentIndex in attachmentIndexes where attachments.indices.contains(attachmentIndex) {
+            let attachmentID = attachments[attachmentIndex].id
             guard let card = fileCards.first(where: { $0.attachment.id == attachmentID }),
                   let image = sendTransitionImage(of: card.frame, item: item, layout: layout, rowFrame: rowFrame)
             else { continue }
@@ -1333,14 +1362,40 @@ extension NativeTimelineCanvasView {
         layout: NativeTimelineRowLayout,
         rowFrame: CGRect
     ) -> [Int: NSImage] {
-        guard let messageID = item.messageID else { return [:] }
+        guard let messageID = item.messageID,
+              let attachments = item.messageRow?.message.attachments
+        else { return [:] }
         var covers: [Int: NSImage] = [:]
-        for attachmentIndex in attachmentIndexes {
-            let region = layout.attachmentRegions[attachmentIndex]
-            guard spoilerRevealStore.isConcealed(region.attachment, in: messageID),
-                  let image = sendTransitionImage(of: region.frame, item: item, layout: layout, rowFrame: rowFrame)
+        for attachmentIndex in attachmentIndexes where attachments.indices.contains(attachmentIndex) {
+            let attachment = attachments[attachmentIndex]
+            guard spoilerRevealStore.isConcealed(attachment, in: messageID),
+                  let target = layout.attachmentTransitionTarget(for: attachment)
             else { continue }
-            covers[attachmentIndex] = image
+            let image: NSImage? = if target.isFromGallery {
+                // A scrolling gallery's tile draws in its overlay, not the row.
+                NativeTimelineSnapshotRenderer.render(size: target.frame.size, scale: rowBitmapScale) {
+                    effectiveAppearance.performAsCurrentDrawingAppearance {
+                        let bounds = CGRect(origin: .zero, size: target.frame.size)
+                        NativeTimelineSpoilerCover.draw(covering: true, in: bounds, cornerRadius: target.cornerRadius) {
+                            NativeTimelineRowPainter.drawMediaSurface(
+                                in: bounds,
+                                cornerRadius: target.cornerRadius,
+                                backdrop: NativeTimelineSemanticColor.opacity(.secondaryLabelColor, 0.10),
+                                image: target.previewKey.flatMap(MediaImageStore.shared.stillImage(for:)),
+                                fillsFrame: true,
+                                placeholder: NativeTimelineMediaPlaceholder(attachment),
+                                fallbackSymbol: attachment.mediaKind == .video ? ("film", InterfaceScale.metric(30)) : nil,
+                                isVideo: attachment.mediaKind == .video
+                            )
+                        }
+                    }
+                }
+            } else {
+                sendTransitionImage(of: target.frame, item: item, layout: layout, rowFrame: rowFrame)
+            }
+            if let image {
+                covers[attachmentIndex] = image
+            }
         }
         return covers
     }
@@ -1407,12 +1462,12 @@ extension NativeTimelineCanvasView {
                 }
                 // Each cutout takes the shape of what flies into it: a file's
                 // card, or a media tile.
-                let fileCards = layout.fileCards
+                let attachments = item.messageRow?.message.attachments ?? []
                 let omittedShapes = omitted.compactMap { index -> (frame: CGRect, cornerRadius: CGFloat)? in
-                    guard layout.attachmentRegions.indices.contains(index) else { return nil }
-                    let region = layout.attachmentRegions[index]
-                    let card = fileCards.first { $0.attachment.id == region.attachment.id }
-                    return (region.frame, card?.cornerRadius ?? NativeTimelineRowPainter.attachmentCornerRadius)
+                    guard attachments.indices.contains(index),
+                          let target = layout.attachmentTransitionTarget(for: attachments[index])
+                    else { return nil }
+                    return (target.frame, target.cornerRadius)
                 }
                 guard !omittedShapes.isEmpty else { return }
                 context.setBlendMode(.clear)
@@ -1611,7 +1666,7 @@ extension NativeTimelineRowLayout {
             return bubbleRegion.isOutgoing ? bubbleRegion.frame : nil
         }
         let bodyFrames = [
-            contentFrame, forwardedHeaderFrame, voiceMessageRegion?.frame, pollLayout?.frame,
+            contentFrame, forwardedHeaderFrame, attachmentGallery?.viewportFrame, voiceMessageRegion?.frame, pollLayout?.frame,
         ].compactMap { $0 }
             + attachmentRegions.map(\.frame)
             + linkedImageRegions.map(\.frame)

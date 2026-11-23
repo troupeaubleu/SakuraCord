@@ -96,7 +96,8 @@ enum NativeTimelineEmbedLayout {
                 guard let media = mainMedia,
                       let url = NativeTimelineEmbedLayout.resolvedURL(media, attachments: attachments)
                 else { return nil }
-                let size = mediaSize(media, maximumWidth: min(maximumWidth, InterfaceScale.metric(500)))
+                // More than two images scroll in a gallery as wide as the row.
+                let size = mediaSize(media, maximumWidth: mediaCount > 2 ? maximumWidth : min(maximumWidth, InterfaceScale.metric(500)))
                 let frame = CGRect(origin: origin, size: size)
                 return .init(
                     embedID: embed.id,
@@ -485,14 +486,26 @@ enum NativeTimelineEmbedLayout {
         ).region
     }
 
+    /// Where a group's embeds go. A bare gallery of more than two images
+    /// can run the row's full width, padded clear of what covers its edges.
+    struct GroupLayout {
+        let origin: CGPoint
+        let maximumWidth: CGFloat
+        var bareGalleryOriginX: CGFloat?
+        var bareGalleryMaximumWidth: CGFloat?
+        var bareGalleryLeadingInset: CGFloat = 0
+        var leadingButtonInset: CGFloat = 0
+        var trailingInset: CGFloat = 0
+        var trailingButtonInset: CGFloat = 0
+        var integratesWithBubble = false
+        var drawsTopSeparator = false
+    }
+
     static func makeGroup(
         embeds: [MessageEmbed],
         message: Message,
         source: AppModel?,
-        origin: CGPoint,
-        maximumWidth: CGFloat,
-        integratesWithBubble: Bool,
-        drawsTopSeparator: Bool
+        layout: GroupLayout
     ) -> [NativeTimelineRowLayout.EmbedRegion] {
         // Resolve before laying out so an unavailable image leaves no empty tile.
         let tiles = embeds.dropFirst().compactMap { embed in
@@ -500,14 +513,36 @@ enum NativeTimelineEmbedLayout {
                 resolvedURL(image, attachments: message.attachments).map { (embed, image, $0) }
             }
         }
+        let scrolls = tiles.count + 1 > 2
+        let isBareGallery = scrolls && !layout.integratesWithBubble
+            && MessageEmbedPresentation.kind(for: embeds[0]) == .bareMedia
         guard var region = make(
             embed: embeds[0], message: message, source: source,
-            attachments: message.attachments, origin: origin,
-            maximumWidth: maximumWidth, integratesWithBubble: integratesWithBubble,
-            drawsTopSeparator: drawsTopSeparator, mediaCount: tiles.count + 1
+            attachments: message.attachments,
+            origin: isBareGallery
+                ? CGPoint(x: layout.bareGalleryOriginX ?? layout.origin.x, y: layout.origin.y)
+                : layout.origin,
+            maximumWidth: isBareGallery ? layout.bareGalleryMaximumWidth ?? layout.maximumWidth : layout.maximumWidth,
+            integratesWithBubble: layout.integratesWithBubble,
+            drawsTopSeparator: layout.drawsTopSeparator, mediaCount: tiles.count + 1
         )
         else { return [] }
         guard !tiles.isEmpty, let mediaFrame = region.mediaFrame else { return [region] }
+        if scrolls, let firstImage = embeds[0].image, let firstURL = region.mediaURL {
+            let entries = [HorizontalGalleryEntry(embed: embeds[0], image: firstImage, url: firstURL)]
+                + tiles.map { HorizontalGalleryEntry(embed: $0.0, image: $0.1, url: $0.2) }
+            region.gallery = horizontalGallery(
+                for: region,
+                entries: entries,
+                mediaFrame: mediaFrame,
+                bareLeadingInset: isBareGallery ? layout.bareGalleryLeadingInset : 0,
+                leadingButtonInset: isBareGallery ? layout.leadingButtonInset : 0,
+                trailingInset: isBareGallery ? layout.trailingInset : 0,
+                trailingButtonInset: isBareGallery ? layout.trailingButtonInset : 0
+            )
+            region.mediaFrame = nil
+            return [region]
+        }
         let frames = groupFrames(count: tiles.count + 1, width: mediaFrame.width)
             .map { $0.offsetBy(dx: mediaFrame.minX, dy: mediaFrame.minY) }
         // The leading region owns the full card and footer. Each image keeps

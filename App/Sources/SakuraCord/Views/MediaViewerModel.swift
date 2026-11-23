@@ -477,14 +477,31 @@ enum MediaViewerPlan {
         id: String
     ) -> MediaViewerPresentation? {
         guard let embed = message.embeds.first(where: { $0.id == id }),
-              let item = RichMediaItem(
+              let selectedItem = RichMediaItem(
                   embed: embed,
                   attachments: message.attachments
               )
         else { return nil }
+        let groups = MessageEmbedPresentation.groupedEmbeds(
+            MessageEmbedPresentation.visibleEmbeds(for: message)
+        )
+        if let group = groups.first(where: { $0.contains { $0.id == id } }),
+           group.count > 1
+        {
+            let items = group.compactMap {
+                RichMediaItem(embed: $0, attachments: message.attachments)
+            }
+            if items.contains(where: { $0.id == selectedItem.id }) {
+                return presentation(
+                    items: items,
+                    selectedID: selectedItem.id,
+                    message: message
+                )
+            }
+        }
         return presentation(
-            items: [item],
-            selectedID: item.id,
+            items: [selectedItem],
+            selectedID: selectedItem.id,
             message: message
         )
     }

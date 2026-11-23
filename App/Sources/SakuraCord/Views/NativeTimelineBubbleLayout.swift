@@ -92,8 +92,9 @@ enum NativeTimelineBubbleLayout {
         }
         let media = message.attachments.filter(\.mediaKind.isVisual)
         if !media.isEmpty {
-            let attachmentWidth = media.compactMap(\.width)
-                .map(CGFloat.init).max() ?? 360
+            let attachmentWidth = media.count > 2
+                ? maximumWidth
+                : (media.compactMap(\.width).map(CGFloat.init).max() ?? 360)
             preferredWidth = max(
                 preferredWidth,
                 min(maximumWidth, max(InterfaceScale.metric(180), attachmentWidth))

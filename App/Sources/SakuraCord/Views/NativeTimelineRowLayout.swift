@@ -79,12 +79,42 @@ struct NativeTimelineRowLayout {
             var mediaKey: MediaImageKey { .media(url, maximumPixelDimension: maximumPixelDimension) }
         }
 
+        struct GalleryItem {
+            let id: String
+            var embedID: String { id }
+            let frame: CGRect
+            let url: URL
+            let mediaKey: MediaImageKey
+            let placeholder: NativeTimelineMediaPlaceholder?
+            let cornerRadius: CGFloat
+            let accessibilityLabel: String?
+            var isVideo = false
+            var isSpoiler = false
+        }
+
+        struct Gallery {
+            let viewportFrame: CGRect
+            let contentWidth: CGFloat
+            var leadingButtonInset: CGFloat = 0
+            var trailingButtonInset: CGFloat = 0
+            let cornerRadius: CGFloat
+            var maskedCorners: CACornerMask = [
+                .layerMinXMinYCorner,
+                .layerMinXMaxYCorner,
+                .layerMaxXMinYCorner,
+                .layerMaxXMaxYCorner,
+            ]
+            var opacity: CGFloat = 1
+            let items: [GalleryItem]
+        }
+
         let embedID: String
         let kind: Kind
         let frame: CGRect
         let textRegions: [TextRegion]
         let imageRegions: [ImageRegion]
         var mediaFrame: CGRect?
+        var gallery: Gallery?
         var mediaCornerRadius: CGFloat = InterfaceScale.metric(8)
         let mediaURL: URL?
         let mediaPreviewURL: URL?
@@ -159,9 +189,21 @@ struct NativeTimelineRowLayout {
         let commandFrame: CGRect
     }
 
+    struct GalleryPageIndicator {
+        enum Scope: Hashable {
+            case attachments
+            case embed(String)
+        }
+
+        let frame: CGRect
+        let itemCount: Int
+        let scope: Scope
+    }
+
     var height: CGFloat = 0
     /// The space below a short row's content that pads it to its avatar's height.
     var avatarPadding: CGFloat = 0
+    var galleryPageIndicator: GalleryPageIndicator?
     var loaderLayout: NativeTimelineLoaderLayout?
     var beginningLayout: NativeTimelineBeginningLayout?
     var searchSectionRegion: SearchSectionRegion?
@@ -224,8 +266,10 @@ struct NativeTimelineRowLayout {
     var forwardedBarFrame: CGRect?
     var forwardedSourceRegion: ForwardedSourceRegion?
     var linkedImageRegions: [LinkedImageRegion] = []
-    /// One region per attachment, in message order: a gallery tile or a file card.
+    /// One region per non-gallery attachment (1-2 visual attachments or file/audio cards).
     var attachmentRegions: [AttachmentRegion] = []
+    /// Horizontal scrolling gallery for normal messages with more than 2 visual attachments.
+    var attachmentGallery: EmbedRegion.Gallery?
     var uploadRings: [UploadRing] = []
 
     var audioFilePlayers: [NativeTimelineVoiceMessageRegion] = []
@@ -248,8 +292,48 @@ struct NativeTimelineRowLayout {
         fileCard(region)?.cornerRadius ?? NativeTimelineRowPainter.attachmentCornerRadius
     }
 
+    struct AttachmentTransitionTarget {
+        let frame: CGRect
+        let attachment: Attachment
+        let previewKey: MediaImageKey?
+        let cornerRadius: CGFloat
+        let isFromGallery: Bool
+    }
+
+    func attachmentTransitionTarget(for attachment: Attachment) -> AttachmentTransitionTarget? {
+        if let region = attachmentRegions.first(where: { $0.attachment.id == attachment.id }) {
+            return AttachmentTransitionTarget(
+                frame: region.frame,
+                attachment: region.attachment,
+                previewKey: region.previewKey,
+                cornerRadius: cornerRadius(of: region),
+                isFromGallery: false
+            )
+        }
+        if let gallery = attachmentGallery,
+           let item = gallery.items.first(where: { $0.id == attachment.id })
+        {
+            let tileFrame = item.frame.offsetBy(
+                dx: gallery.viewportFrame.minX,
+                dy: gallery.viewportFrame.minY
+            )
+            let visibleFrame = tileFrame.intersection(gallery.viewportFrame)
+            guard !visibleFrame.isNull, visibleFrame.width >= 1, visibleFrame.height >= 1 else {
+                return nil
+            }
+            return AttachmentTransitionTarget(
+                frame: visibleFrame,
+                attachment: attachment,
+                previewKey: item.mediaKey,
+                cornerRadius: item.cornerRadius,
+                isFromGallery: true
+            )
+        }
+        return nil
+    }
+
     var mediaGalleryItemCount: Int {
-        attachmentRegions.count { $0.attachment.mediaKind.isVisual }
+        attachmentGallery?.items.count ?? attachmentRegions.count { $0.attachment.mediaKind.isVisual }
     }
     var voiceMessageRegion: NativeTimelineVoiceMessageRegion?
     /// Every voice message and audio file player in the row.

@@ -126,6 +126,7 @@ extension NativeTimelineCanvasView {
                 && !inboxHeaderHosts.values.contains { $0 === childView }
                 && !inboxEventHosts.values.contains { $0 === childView }
                 && !inboxForumPostHosts.values.contains { $0 === childView }
+                && !embedGalleryOverlays.values.contains { $0 === childView }
         }
         if let editingRowHost = editing.host,
            let hostIndex = additionalChildren.firstIndex(where: {
@@ -811,6 +812,14 @@ extension NativeTimelineCanvasView {
                 self?.activateLinkedImage(region, in: message, rowIndex: rowIndex) ?? false
             })
         }
+        if let gallery = layout.attachmentGallery {
+            children.append(attachmentGalleryAccessibilityElement(
+                gallery,
+                message: message,
+                rowIndex: rowIndex,
+                parent: parent
+            ))
+        }
         if !layout.attachmentRegions.isEmpty {
             let galleryFrame = layout.attachmentRegions
                 .map(\.frame)
@@ -1305,7 +1314,15 @@ extension NativeTimelineCanvasView {
             }
             group.setAccessibilityChildren(groupChildren)
             children.append(group)
-            if let frame = region.mediaFrame {
+            if let gallery = region.gallery {
+                children.append(embedGalleryAccessibilityElement(
+                    gallery,
+                    embedID: region.embedID,
+                    message: message,
+                    rowIndex: rowIndex,
+                    parent: parent
+                ))
+            } else if let frame = region.mediaFrame {
                 children.append(accessibilityElement(
                     role: .button,
                     label: embed?.image?.description
@@ -1327,6 +1344,113 @@ extension NativeTimelineCanvasView {
                 })
             }
         }
+    }
+
+    private func attachmentGalleryAccessibilityElement(
+        _ gallery: NativeTimelineRowLayout.EmbedRegion.Gallery,
+        message: Message,
+        rowIndex: Int,
+        parent: NSAccessibilityElement
+    ) -> NSAccessibilityElement {
+        let galleryElement = accessibilityElement(
+            role: .group,
+            label: "Media gallery, \(gallery.items.count) items",
+            frame: accessibilityChildFrame(
+                gallery.viewportFrame,
+                rowIndex: rowIndex
+            ),
+            parent: parent
+        )
+        let key = EmbedGalleryOverlayKey(
+            row: items[rowIndex].identifier,
+            scope: .attachments
+        )
+        let scrollOffsetX = embedGalleryOverlays[key]?.currentScrollOffsetX
+            ?? embedGalleryScrollOffsets[key]
+            ?? 0
+        let galleryChildren = gallery.items.compactMap { item -> NSAccessibilityElement? in
+            guard let attachment = message.attachments.first(where: { $0.id == item.id }) else {
+                return nil
+            }
+            let revealKey = NativeTimelineComponentRevealKey.attachment(
+                messageID: message.id,
+                attachmentID: attachment.id
+            )
+            let isHiddenSpoiler = attachment.isSpoiler
+                && !spoilerRevealStore.isMediaRevealed(revealKey)
+            let contentLabel = item.accessibilityLabel ?? attachment.filename
+            let itemFrame = item.frame.offsetBy(
+                dx: gallery.viewportFrame.minX - scrollOffsetX,
+                dy: gallery.viewportFrame.minY
+            )
+            return accessibilityElement(
+                role: .button,
+                label: isHiddenSpoiler ? "Reveal spoiler" : contentLabel,
+                help: isHiddenSpoiler ? "Reveals the spoiler without opening it" : "Open \(contentLabel)",
+                frame: accessibilityChildFrame(
+                    itemFrame,
+                    rowIndex: rowIndex
+                ),
+                parent: galleryElement
+            ) { [weak self] in
+                self?.activateAttachment(
+                    attachment,
+                    in: message,
+                    rowIndex: rowIndex
+                ) ?? false
+            }
+        }
+        galleryElement.setAccessibilityChildren(galleryChildren)
+        return galleryElement
+    }
+
+    private func embedGalleryAccessibilityElement(
+        _ gallery: NativeTimelineRowLayout.EmbedRegion.Gallery,
+        embedID: String,
+        message: Message,
+        rowIndex: Int,
+        parent: NSAccessibilityElement
+    ) -> NSAccessibilityElement {
+        let galleryElement = accessibilityElement(
+            role: .group,
+            label: "Media gallery, \(gallery.items.count) items",
+            frame: accessibilityChildFrame(
+                gallery.viewportFrame,
+                rowIndex: rowIndex
+            ),
+            parent: parent
+        )
+        let key = EmbedGalleryOverlayKey(
+            row: items[rowIndex].identifier,
+            scope: .embed(embedID)
+        )
+        let scrollOffsetX = embedGalleryOverlays[key]?.currentScrollOffsetX
+            ?? embedGalleryScrollOffsets[key]
+            ?? 0
+        let galleryChildren = gallery.items.enumerated().map { index, item in
+            let itemFrame = item.frame.offsetBy(
+                dx: gallery.viewportFrame.minX - scrollOffsetX,
+                dy: gallery.viewportFrame.minY
+            )
+            return accessibilityElement(
+                role: .button,
+                label: item.accessibilityLabel ?? "Image \(index + 1) of \(gallery.items.count)",
+                help: "Open media",
+                frame: accessibilityChildFrame(
+                    itemFrame,
+                    rowIndex: rowIndex
+                ),
+                parent: galleryElement
+            ) { [weak self] in
+                guard let self else { return false }
+                if !openEmbedMediaInViewer(id: item.id, message: message, rowIndex: rowIndex) {
+                    NSWorkspace.shared.open(item.url)
+                }
+                return true
+            }
+        }
+        galleryElement.setAccessibilityChildren(galleryChildren)
+        return galleryElement
     }
 
     func appendSakuraCordDeepLinkAccessibility(

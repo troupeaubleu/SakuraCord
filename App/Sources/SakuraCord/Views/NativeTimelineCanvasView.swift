@@ -42,6 +42,16 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         let url: URL
     }
 
+    struct EmbedGalleryOverlayKey: Hashable {
+        enum Scope: Hashable {
+            case attachments
+            case embed(String)
+        }
+
+        let row: NativeMessageTimelineItem.Identifier
+        let scope: Scope
+    }
+
     enum AnimatedMediaOverlayRole: Hashable {
         case authorAvatar
         case authorAvatarDecoration
@@ -327,6 +337,12 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         [NativeMessageTimelineItem.Identifier: Set<URL>] = [:]
     var inlineVideoOverlays:
         [InlineVideoOverlayKey: NativeTimelineInlineVideoOverlay] = [:]
+    var embedGalleryOverlays:
+        [EmbedGalleryOverlayKey: NativeTimelineEmbedGalleryOverlay] = [:]
+    var galleryPageIndicators:
+        [EmbedGalleryOverlayKey: NativeTimelineGalleryPageIndicatorView] = [:]
+    var embedGalleryScrollOffsets:
+        [EmbedGalleryOverlayKey: CGFloat] = [:]
     /// Video attachments the user started, playing over their tiles.
     var inlinePlayers: [NativeTimelineInlinePlayer.Key: NativeTimelineInlinePlayer] = [:]
     var animatedMediaOverlays:
