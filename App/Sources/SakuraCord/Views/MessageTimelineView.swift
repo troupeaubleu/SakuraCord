@@ -739,21 +739,33 @@ enum MessageTimelineLoadingPolicy {
 struct MessageTimelineLoadingChrome: ViewModifier {
     let showsLoadingSkeleton: Bool
     let bottomContentInset: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .scrollEdgeEffectStyle(.soft, for: .top)
             .ignoresSafeArea(.container, edges: [.top, .leading])
-            .opacity(showsLoadingSkeleton ? 0 : 1)
+            // The stand-in appears at once; the messages come into focus out of it.
+            .animation(focusAnimation) {
+                $0.blur(radius: showsLoadingSkeleton && !reduceMotion ? MessageTimelineLoadingPreviewView.blurRadius : 0)
+                    .opacity(showsLoadingSkeleton ? 0 : 1)
+            }
             .allowsHitTesting(!showsLoadingSkeleton)
             .accessibilityHidden(showsLoadingSkeleton)
             .overlay {
-                if showsLoadingSkeleton {
-                    MessageTimelineLoadingSkeleton(
-                        bottomContentInset: bottomContentInset
-                    )
+                ZStack {
+                    if showsLoadingSkeleton {
+                        MessageTimelineLoadingPreview(bottomContentInset: bottomContentInset)
+                            .padsForWorkspaceConversationCover()
+                            .transition(.asymmetric(insertion: .identity, removal: .opacity))
+                    }
                 }
+                .animation(focusAnimation, value: showsLoadingSkeleton)
             }
+    }
+
+    private var focusAnimation: Animation? {
+        showsLoadingSkeleton ? nil : .smooth(duration: 0.45)
     }
 }
 

@@ -25,7 +25,6 @@ extension NativeTimelineCanvasView {
         {
             return
         }
-        reconcileHistorySkeletonShimmer()
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             reconcileSendTransitions()
         }

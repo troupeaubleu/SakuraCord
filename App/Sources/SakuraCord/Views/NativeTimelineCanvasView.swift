@@ -192,10 +192,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     }
     var historySkeleton:
         TimelineHistorySkeletonPresentation?
-    let historySkeletonShimmer = SkeletonShimmer()
-    var historySkeletonShimmerFrame = CGRect.null
-    var historySkeletonShimmerScale = InterfaceScale.factor
-    var historySkeletonShimmerPresentation: TimelineHistorySkeletonPresentation?
+    let historyPreview = MessageTimelineLoadingPreviewView(frame: .zero)
     var messageJumpHighlight: MessageJumpHighlight?
     var messageJumpHighlightTask: Task<Void, Never>?
     var sendTransitions: [NativeTimelineSendTransition] = []
@@ -415,7 +412,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         // mouse event. Async layer drawing visibly leaves the previous row's
         // hover behind even though hit testing has already moved on.
         layer?.drawsAsynchronously = false
-        layer?.addSublayer(historySkeletonShimmer.layer)
+        historyPreview.isHidden = true
+        addSubview(historyPreview)
         beginningSelectionOverlay.imageAlignment = .alignTopLeft
         beginningSelectionOverlay.imageScaling = .scaleNone
         beginningSelectionOverlay.isHidden = true
@@ -470,7 +468,6 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         finishRowMotions()
         invalidatePresentationCaches()
         reconcileBeginningSelectionOverlay()
-        reconcileHistorySkeletonShimmer()
     }
 
     override func viewDidChangeBackingProperties() {

@@ -104,7 +104,7 @@ extension NativeTimelineCanvasView {
             // the bounded canvas clears that transition without touching the
             // rest of the virtual document.
             needsDisplay = true
-            reconcileHistorySkeletonShimmer()
+            reconcileHistoryPreview()
         }
         reconcileVisibleReactionPreviewLoads()
         prefetchVisibleVoiceMessages()
@@ -141,39 +141,18 @@ extension NativeTimelineCanvasView {
         // disappears, or belongs to a different conversation so no stale
         // placeholder pixels can survive into materialized rows.
         needsDisplay = true
-        reconcileHistorySkeletonShimmer()
+        reconcileHistoryPreview()
     }
 
-    func reconcileHistorySkeletonShimmer() {
+    /// The history placeholder covers only the part of its region the
+    /// canvas backs, its messages anchored to the region's bottom edge.
+    func reconcileHistoryPreview() {
         let frame = historySkeleton?.frame.intersection(bounds) ?? .null
-        let animates = !frame.isNull && !frame.isEmpty
-            && !isHiddenOrHasHiddenAncestor
-            && window?.occlusionState.contains(.visible) == true
-            && AppMotionPolicy.animatesUncategorized
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            historySkeletonShimmer.update(
-                frame: frame.isNull ? .zero : frame,
-                color: .labelColor, animates: animates
-            )
-        }
-        guard animates else { return }
-        guard historySkeletonShimmerFrame != frame
-            || historySkeletonShimmerPresentation != historySkeleton
-            || historySkeletonShimmerScale != InterfaceScale.factor
-        else { return }
-        historySkeletonShimmerFrame = frame
-        historySkeletonShimmerScale = InterfaceScale.factor
-        historySkeletonShimmerPresentation = historySkeleton
-        let path = NSBezierPath()
-        appendHistorySkeletonRows(in: frame, to: path, drawsBase: false)
-        var translation = CGAffineTransform(translationX: -frame.minX, y: -frame.minY)
-        let mask = CAShapeLayer()
-        mask.frame = CGRect(origin: .zero, size: frame.size)
-        mask.path = path.cgPath.copy(using: &translation)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        historySkeletonShimmer.layer.mask = mask
-        CATransaction.commit()
+        historyPreview.isHidden = frame.isNull || frame.isEmpty
+        guard let historySkeleton, !historyPreview.isHidden else { return }
+        historyPreview.frame = frame
+        historyPreview.bottomOffset = historySkeleton.frame.maxY - frame.maxY
+        historyPreview.bottomInset = MessageTimelineLoadingPreviewView.messageSpacing
     }
 
     func updateContentOriginY(
@@ -458,7 +437,7 @@ extension NativeTimelineCanvasView {
                 needsDisplay = true
             }
         }
-        reconcileHistorySkeletonShimmer()
+        reconcileHistoryPreview()
         presentRowsEnteringViewport()
         reconcileInlinePlayers()
         refreshMediaViewerTransition()
@@ -556,20 +535,9 @@ extension NativeTimelineCanvasView {
         }
     }
 
-    override func viewDidHide() {
-        super.viewDidHide()
-        reconcileHistorySkeletonShimmer()
-    }
-
-    override func viewDidUnhide() {
-        super.viewDidUnhide()
-        reconcileHistorySkeletonShimmer()
-    }
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         restoreInboxKeyboardFocus()
-        reconcileHistorySkeletonShimmer()
         if window != nil {
             installReactionMouseMonitor()
             Task { @MainActor [weak self] in
@@ -707,7 +675,6 @@ extension NativeTimelineCanvasView {
         // pixels before draw(_:). Clear first so bottom-origin changes cannot
         // composite newly positioned rows over their former positions.
         NSGraphicsContext.current?.cgContext.clear(dirtyRect)
-        drawHistorySkeleton(in: dirtyRect)
         var displayedRows: [Int] = []
         forEachDisplayedRow(in: dirtyRect) { displayedRows.append($0) }
         drawSuppressedHighlights(for: displayedRows)
@@ -1131,112 +1098,6 @@ extension NativeTimelineCanvasView {
                         .textRegions[textIndex].contentID
                         ?? "\(layoutIndex):\(textIndex)"
                 )
-        }
-    }
-
-    func drawHistorySkeleton(in dirtyRect: CGRect) {
-        guard let frame = historySkeleton?.frame else { return }
-        let clipped = frame.intersection(dirtyRect)
-        guard !clipped.isNull, !clipped.isEmpty else { return }
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        NSBezierPath(rect: clipped).addClip()
-        appendHistorySkeletonRows(in: dirtyRect, to: NSBezierPath(), drawsBase: true)
-    }
-
-    private func appendHistorySkeletonRows(
-        in dirtyRect: CGRect, to path: NSBezierPath, drawsBase: Bool
-    ) {
-        guard let presentation = historySkeleton else { return }
-        let frame = presentation.frame
-        let clipped = frame.intersection(dirtyRect)
-        guard !clipped.isNull, clipped.height > 0 else { return }
-        let rowStride = InterfaceScale.metric(76)
-        let rowCount = max(1, Int(ceil(frame.height / rowStride)))
-        let firstOrdinal = max(0, Int(floor((frame.maxY - clipped.maxY) / rowStride)))
-        let lastOrdinal = min(
-            rowCount - 1,
-            max(firstOrdinal, Int(ceil((frame.maxY - clipped.minY) / rowStride)))
-        )
-        for ordinal in firstOrdinal ... lastOrdinal {
-            drawHistorySkeletonRow(
-                ordinal: ordinal,
-                rowTop: frame.maxY - CGFloat(ordinal + 1) * rowStride,
-                frameWidth: frame.width, shimmerMask: path, drawsBase: drawsBase
-            )
-        }
-    }
-
-    private func drawHistorySkeletonRow(
-        ordinal: Int,
-        rowTop: CGFloat,
-        frameWidth: CGFloat,
-        shimmerMask: NSBezierPath,
-        drawsBase: Bool
-    ) {
-        let contentX: CGFloat = InterfaceScale.metric(64)
-        let maximumContentWidth = max(InterfaceScale.metric(80), frameWidth - contentX - InterfaceScale.metric(14))
-        let authorWidths: [CGFloat] = [92, 126, 108, 148]
-        let lineFractions: [[CGFloat]] = [
-            [0.72],
-            [0.91, 0.58],
-            [0.84, 0.76, 0.42],
-            [0.64, 0.88],
-        ]
-        let avatarPath = NSBezierPath(ovalIn: CGRect(
-            x: InterfaceScale.metric(14),
-            y: rowTop + InterfaceScale.metric(11),
-            width: InterfaceScale.metric(38),
-            height: InterfaceScale.metric(38)
-        ))
-        if drawsBase { SkeletonShimmerStyle.baseColor().setFill() }
-        if drawsBase { avatarPath.fill() }
-        shimmerMask.append(avatarPath)
-
-        let authorWidth = min(
-            maximumContentWidth * 0.45,
-            authorWidths[ordinal % authorWidths.count]
-        )
-        let authorPath = NSBezierPath(
-            roundedRect: CGRect(
-                x: contentX,
-                y: rowTop + InterfaceScale.metric(10),
-                width: authorWidth,
-                height: InterfaceScale.metric(10)
-            ),
-            xRadius: InterfaceScale.metric(5),
-            yRadius: InterfaceScale.metric(5)
-        )
-        if drawsBase { authorPath.fill() }
-        shimmerMask.append(authorPath)
-
-        let timestampPath = NSBezierPath(
-            roundedRect: CGRect(
-                x: contentX + authorWidth + InterfaceScale.metric(8),
-                y: rowTop + InterfaceScale.metric(12),
-                width: InterfaceScale.metric(38),
-                height: InterfaceScale.metric(7)
-            ),
-            xRadius: InterfaceScale.metric(3.5),
-            yRadius: InterfaceScale.metric(3.5)
-        )
-        if drawsBase { timestampPath.fill() }
-        shimmerMask.append(timestampPath)
-
-        let fractions = lineFractions[ordinal % lineFractions.count]
-        for (line, fraction) in fractions.enumerated() {
-            let linePath = NSBezierPath(
-                roundedRect: CGRect(
-                    x: contentX,
-                    y: rowTop + InterfaceScale.metric(28) + CGFloat(line) * 13,
-                    width: max(InterfaceScale.metric(34), maximumContentWidth * fraction),
-                    height: InterfaceScale.metric(8)
-                ),
-                xRadius: InterfaceScale.metric(4),
-                yRadius: InterfaceScale.metric(4)
-            )
-            if drawsBase { linePath.fill() }
-            shimmerMask.append(linePath)
         }
     }
 

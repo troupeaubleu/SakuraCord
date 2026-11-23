@@ -50,7 +50,7 @@ struct SkeletonShimmerTimeline<Content: View>: View {
     }
 }
 
-/// Shared by SwiftUI placeholders and the native history canvas. Its mask and
+/// Shared by SwiftUI placeholders and native views. Its mask and
 /// geometry change only when the placeholder changes, never on animation ticks.
 final class SkeletonShimmer {
     let layer = CALayer()
