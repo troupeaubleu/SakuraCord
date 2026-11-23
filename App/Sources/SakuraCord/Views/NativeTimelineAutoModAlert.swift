@@ -236,7 +236,7 @@ extension NativeTimelineRowPainter {
                 header.name.draw(in: header.nameFrame, color: .sakuraCordAccentColor, context: context)
             }
         }
-        pollSurface(in: alert.cardFrame, cornerRadius: NativeTimelineAutoModAlertLayout.cornerRadius)
+        pollSurface(in: alert.cardFrame)
         for button in alert.buttons {
             let target = NativeTimelineComponentButtonTarget(messageID: input.row.message.id, componentID: button.action.rawValue)
             gradientButton(

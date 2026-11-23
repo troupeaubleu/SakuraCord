@@ -4,7 +4,7 @@ import SakuraCordModels
 extension NativeTimelineRowPainter {
     static func drawPollResult(_ input: NativeTimelineMessageDrawInput) {
         guard let result = input.row.message.pollResultSummary, let frame = input.layout.pollResultFrame else { return }
-        pollSurface(in: frame, cornerRadius: NativeTimelinePollLayout.resultCornerRadius(in: frame))
+        pollSurface(in: frame)
         let label = result.winner ?? (result.totalVotes == 0 ? "There was no winner" : "The results were tied")
         text(label, in: CGRect(
             x: frame.minX + InterfaceScale.metric(17),
