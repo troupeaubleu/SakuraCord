@@ -99,7 +99,7 @@ final class ConversationFooterContainerView: NSView {
     /// The footer's height in a conversation `width` wide, at the width a
     /// sliding column leaves it.
     func fittingHeight(width proposed: CGFloat) -> CGFloat {
-        let width = max(0, proposed - WorkspaceConversationCover.shared.trailingInset)
+        let width = max(0, proposed - currentTrailingInset)
         // A resizing conversation asks on every frame; the composer is
         // measured again only at a new width or after its content changed.
         if let measured, abs(measured.width - width) < 0.5 {
@@ -117,6 +117,10 @@ final class ConversationFooterContainerView: NSView {
     /// The last measurement, for the width it was made at.
     private var measured: (width: CGFloat, height: CGFloat)?
 
+    private var currentTrailingInset: CGFloat {
+        window == nil ? 0 : WorkspaceConversationCover.shared.trailingInset(for: self)
+    }
+
     override func layout() {
         super.layout()
         placeHost()
@@ -125,7 +129,7 @@ final class ConversationFooterContainerView: NSView {
     /// Clear of a column sliding over the conversation, in the frame that
     /// moves it.
     private func placeHost() {
-        let inset = WorkspaceConversationCover.shared.trailingInset
+        let inset = currentTrailingInset
         let frame = CGRect(
             x: 0, y: bounds.height - Self.hostHeight, width: max(0, bounds.width - inset), height: Self.hostHeight
         )

@@ -226,10 +226,11 @@ enum NativeTimelineBubbleLayout {
         searchCardFrame: CGRect?,
         highlightMinY: CGFloat,
         rowHeight: CGFloat,
+        minX: CGFloat = 0,
         width: CGFloat
     ) -> CGRect {
         let defaultFrame = CGRect(
-            x: searchCardFrame?.minX ?? 0,
+            x: searchCardFrame?.minX ?? minX,
             y: highlightMinY,
             width: searchCardFrame?.width ?? width,
             height: searchCardFrame?.height ?? max(0, rowHeight - highlightMinY)

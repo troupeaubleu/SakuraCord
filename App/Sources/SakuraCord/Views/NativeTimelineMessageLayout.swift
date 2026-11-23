@@ -10,10 +10,17 @@ extension NativeTimelineRowLayout {
         let row: MessageRowPresentation
         let isUnreadBoundary: Bool
         let width: CGFloat
+        let coverInsets: WorkspaceConversationCover.Insets
         let source: AppModel?
         let metrics: Metrics
         /// The inline editor's text height while this message is edited.
         let editingTextHeight: CGFloat?
+
+        private var leadingInset: CGFloat { coverInsets.leading }
+        private var trailingInspectorInset: CGFloat { coverInsets.trailing }
+        private var contentBoundsWidth: CGFloat {
+            max(InterfaceScale.metric(160), width - leadingInset - trailingInspectorInset)
+        }
 
         private var result = NativeTimelineRowLayout()
         private var contentPresentation: NativeTimelineTextPresentation.Value
@@ -53,13 +60,20 @@ extension NativeTimelineRowLayout {
         private let presentedReactions: [Reaction]
 
         init(
-            row: MessageRowPresentation, isUnreadBoundary: Bool, width: CGFloat, source: AppModel?, metrics: Metrics,
-            relativeTo date: Date = .now, editingTextHeight: CGFloat? = nil
+            row: MessageRowPresentation,
+            isUnreadBoundary: Bool,
+            width: CGFloat,
+            coverInsets: WorkspaceConversationCover.Insets = .zero,
+            source: AppModel?,
+            metrics: Metrics,
+            relativeTo date: Date = .now,
+            editingTextHeight: CGFloat? = nil
         ) {
             self.row = row
             self.editingTextHeight = editingTextHeight
             self.isUnreadBoundary = isUnreadBoundary
             self.width = width
+            self.coverInsets = coverInsets
             self.source = source
             self.metrics = metrics
             bubbleContext = NativeTimelineBubbleLayout.context(for: row.message, source: source)
@@ -159,13 +173,13 @@ extension NativeTimelineRowLayout {
                     for: message,
                     row: row,
                     content: contentPresentation,
-                    availableWidth: width,
+                    availableWidth: contentBoundsWidth,
                     isEnabled: usesBubbles,
                     translation: translationPresentation
                 )
             func column(preferring preferredContentWidth: CGFloat) -> NativeTimelineBubbleLayout.Column {
                 NativeTimelineBubbleLayout.column(
-                    availableWidth: width,
+                    availableWidth: contentBoundsWidth,
                     horizontalInset: horizontalInset,
                     avatarWidth: avatarWidth,
                     columnGap: columnGap,
@@ -178,38 +192,39 @@ extension NativeTimelineRowLayout {
             // An edit can outgrow the text it replaces. Only its editor and
             // the bubble around it widen; media keeps its place.
             if usesBubbles, editingTextHeight != nil {
-                editingTextColumn = column(preferring: NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: width))
+                editingTextColumn = column(preferring: NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: contentBoundsWidth))
             }
-            contentX = row.isResource ? horizontalInset : bubbleColumn.contentX
-            contentWidth = row.isResource ? width - horizontalInset * 2 : bubbleColumn.contentWidth
+            contentX = leadingInset + (row.isResource ? horizontalInset : bubbleColumn.contentX)
+            contentWidth = row.isResource ? contentBoundsWidth - horizontalInset * 2 : bubbleColumn.contentWidth
             ordinaryContentWidth = max(
                 80,
-                width - contentX - horizontalInset
+                leadingInset + contentBoundsWidth - contentX - horizontalInset
             )
         }
 
         private mutating func appendPrefix() {
             let searchPrefix = NativeTimelineSearchPrefixLayout.make(
                 context: searchContext,
-                width: width
+                width: contentBoundsWidth,
+                leadingInset: leadingInset
             )
             result.searchSectionRegion = searchPrefix.region
             var prefixHeight = searchPrefix.height
 
             if row.startsDay {
                 result.daySeparatorFrame = CGRect(
-                    x: horizontalInset,
+                    x: leadingInset + horizontalInset,
                     y: prefixHeight,
-                    width: width - InterfaceScale.metric(28),
+                    width: contentBoundsWidth - InterfaceScale.metric(28),
                     height: NativeTimelineDateSeparatorMetrics.rowHeight
                 )
                 prefixHeight += NativeTimelineDateSeparatorMetrics.rowHeight
                 if isUnreadBoundary { result.foldedUnreadDay = row.message.timestamp }
             } else if isUnreadBoundary {
                 result.unreadSeparatorFrame = CGRect(
-                    x: horizontalInset,
+                    x: leadingInset + horizontalInset,
                     y: prefixHeight,
-                    width: width - InterfaceScale.metric(24),
+                    width: contentBoundsWidth - InterfaceScale.metric(24),
                     height: NativeTimelineUnreadSeparatorMetrics.rowHeight
                 )
                 prefixHeight += NativeTimelineUnreadSeparatorMetrics.rowHeight
@@ -228,9 +243,9 @@ extension NativeTimelineRowLayout {
             // Bubbles place the reference after the author header instead.
             if !usesBubbleReference, row.replyMessageID != nil, message.type != .pollResult {
                 let frame = CGRect(
-                    x: horizontalInset,
+                    x: leadingInset + horizontalInset,
                     y: verticalOffset,
-                    width: width - horizontalInset * 2,
+                    width: contentBoundsWidth - horizontalInset * 2,
                     height: NativeTimelineReplyMetrics.lineHeight
                 )
                 result.replyFrame = frame
@@ -246,8 +261,8 @@ extension NativeTimelineRowLayout {
             if !usesBubbleReference, message.type.isCommandResponse {
                 result.commandInvocationRegion = NativeTimelineRowLayout.commandInvocation(
                     message,
-                    origin: CGPoint(x: horizontalInset, y: verticalOffset),
-                    maximumWidth: width - horizontalInset * 2,
+                    origin: CGPoint(x: leadingInset + horizontalInset, y: verticalOffset),
+                    maximumWidth: contentBoundsWidth - horizontalInset * 2,
                     cosmeticPolicy: source?.cosmeticPolicy ?? .init()
                 )
                 verticalOffset += MessageRowLayoutMetrics.commandInvocationHeight
@@ -265,7 +280,7 @@ extension NativeTimelineRowLayout {
                 // A bubble avatar keeps its gap to the bubble's tail.
                 let diameter = usesBubbles ? NativeTimelineBubbleLayout.avatarDiameter : avatarWidth
                 result.avatarFrame = CGRect(
-                    origin: CGPoint(x: horizontalInset + avatarWidth - diameter, y: verticalOffset),
+                    origin: CGPoint(x: leadingInset + horizontalInset + avatarWidth - diameter, y: verticalOffset),
                     size: CGSize(width: diameter, height: diameter)
                 )
             }
@@ -281,7 +296,7 @@ extension NativeTimelineRowLayout {
                       !showsIncomingAvatar
             {
                 result.compactTimestampFrame = CGRect(
-                    x: horizontalInset,
+                    x: leadingInset + horizontalInset,
                     y: verticalOffset,
                     width: timestampGutterWidth,
                     height: MessageRowLayoutMetrics.compactContentHeight
@@ -290,7 +305,7 @@ extension NativeTimelineRowLayout {
 
             if isGenerated {
                 result.systemIconFrame = CGRect(
-                    x: horizontalInset + InterfaceScale.metric(36),
+                    x: leadingInset + horizontalInset + InterfaceScale.metric(36),
                     y: verticalOffset,
                     width: InterfaceScale.metric(16),
                     height: MessageRowLayoutMetrics.compactContentHeight
@@ -334,10 +349,10 @@ extension NativeTimelineRowLayout {
                 // Outgoing previews grow leftward, up to the incoming avatar
                 // column, and neither side outgrows the bubble column.
                 let availableWidth = min(
-                    NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: width),
+                    NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: contentBoundsWidth),
                     isOutgoingBubble
-                        ? referenceX - horizontalInset - avatarWidth
-                        : width - horizontalInset - referenceX
+                        ? referenceX - (leadingInset + horizontalInset) - avatarWidth
+                        : leadingInset + contentBoundsWidth - horizontalInset - referenceX
                 )
                 let previewWidth = max(0, min(ceil(naturalWidth), availableWidth))
                 let previewFrame = CGRect(
@@ -359,7 +374,7 @@ extension NativeTimelineRowLayout {
                 result.commandInvocationRegion = NativeTimelineRowLayout.commandInvocation(
                     message,
                     origin: origin,
-                    maximumWidth: width - horizontalInset - origin.x,
+                    maximumWidth: leadingInset + contentBoundsWidth - horizontalInset - origin.x,
                     cosmeticPolicy: source?.cosmeticPolicy ?? .init()
                 )
             }
@@ -643,8 +658,10 @@ extension NativeTimelineRowLayout {
                     )
             } ?? 0
             result.contentFrame = CGRect(
-                x: editingTextColumn?.contentX ?? contentX, y: verticalOffset,
-                width: editingTextColumn?.contentWidth ?? contentWidth, height: height
+                x: editingTextColumn.map { leadingInset + $0.contentX } ?? contentX,
+                y: verticalOffset,
+                width: editingTextColumn?.contentWidth ?? contentWidth,
+                height: height
             )
             verticalOffset += height
             hasRichContent = true
@@ -1002,8 +1019,9 @@ extension NativeTimelineRowLayout {
             if usesBubbles, hasRichContent {
                 verticalOffset += NativeTimelineBubbleLayout.verticalPadding
                 let editing = editingTextColumn ?? .init(contentX: contentX, contentWidth: contentWidth)
-                let bubbleMinX = min(contentX, editing.contentX)
-                let bubbleMaxX = max(contentX + contentWidth, editing.contentX + editing.contentWidth)
+                let editingContentX = editingTextColumn.map { leadingInset + $0.contentX } ?? editing.contentX
+                let bubbleMinX = min(contentX, editingContentX)
+                let bubbleMaxX = max(contentX + contentWidth, editingContentX + editing.contentWidth)
                 let region = NativeTimelineBubbleLayout.region(
                     contentX: bubbleMinX,
                     contentWidth: bubbleMaxX - bubbleMinX,
@@ -1066,8 +1084,8 @@ extension NativeTimelineRowLayout {
             guard usesBubbles else { return contentWidth }
             return max(contentWidth, min(
                 natural,
-                NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: width),
-                isOutgoingBubble ? contentX + contentWidth - horizontalInset : ordinaryContentWidth
+                NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: contentBoundsWidth),
+                isOutgoingBubble ? contentX + contentWidth - (leadingInset + horizontalInset) : ordinaryContentWidth
             ))
         }
 
@@ -1161,9 +1179,9 @@ extension NativeTimelineRowLayout {
             result.searchCardFrame = searchContext.flatMap { context -> CGRect? in
                 guard !context.isInbox else { return nil }
                 return CGRect(
-                    x: 0,
+                    x: leadingInset,
                     y: highlightMinY,
-                    width: width,
+                    width: contentBoundsWidth,
                     height: max(0, rowHeight - highlightMinY - searchBottomInset)
                 )
             }
@@ -1174,7 +1192,8 @@ extension NativeTimelineRowLayout {
                 searchCardFrame: result.searchCardFrame,
                 highlightMinY: highlightMinY,
                 rowHeight: rowHeight,
-                width: width
+                minX: leadingInset,
+                width: contentBoundsWidth
             )
 
             result.height = rowHeight
@@ -1188,9 +1207,9 @@ extension NativeTimelineRowLayout {
             guard message.isPostStarter, row.isConversationRow else { return }
             let height = NativeTimelinePostStarterDividerMetrics.rowHeight
             result.postStarterDividerFrame = CGRect(
-                x: horizontalInset,
+                x: leadingInset + horizontalInset,
                 y: result.height,
-                width: width - horizontalInset * 2,
+                width: contentBoundsWidth - horizontalInset * 2,
                 height: height
             )
             result.height += height

@@ -26,16 +26,21 @@ nonisolated enum NativeTimelineWidthRelayoutPolicy {
 extension NativeMessageTimelineCoordinator {
     func applyImmediateWidthRelayout(
         _ width: CGFloat,
+        coverInsets: WorkspaceConversationCover.Insets,
         preparedLayouts: [NativeTimelineRowLayout]?,
         to canvas: NativeTimelineCanvasView,
         in scrollView: NSScrollView
     ) {
         previewLayoutWidth = nil
+        previewCoverInsets = nil
         previewedRowIdentifiers.removeAll()
         rowsPreviewedAtCurrentWidth.removeAll()
         let metrics = NativeTimelineRowLayout.Metrics(source: parent.model)
-        layouts = preparedLayouts ?? items.map { layout(for: $0, width: width, metrics: metrics) }
+        layouts = preparedLayouts ?? items.map {
+            layout(for: $0, width: width, coverInsets: coverInsets, metrics: metrics)
+        }
         layoutWidth = width
+        layoutCoverInsets = coverInsets
         rowHeights = layouts.map(\.height)
         rebuildOrigins()
         applySnapshot(to: canvas, in: scrollView)
@@ -43,13 +48,15 @@ extension NativeMessageTimelineCoordinator {
 
     func applyVisibleWidthPreview(
         _ width: CGFloat,
+        coverInsets: WorkspaceConversationCover.Insets,
         resetsRows: Bool,
         to canvas: NativeTimelineCanvasView,
         in scrollView: NSScrollView
     ) {
         previewLayoutWidth = width
+        previewCoverInsets = coverInsets
         if resetsRows { rowsPreviewedAtCurrentWidth.removeAll() }
-        previewVisibleRows(at: width)
+        previewVisibleRows(at: width, coverInsets: coverInsets)
         applySnapshot(to: canvas, in: scrollView, viewportWidth: width)
     }
 
@@ -67,7 +74,7 @@ extension NativeMessageTimelineCoordinator {
         return range.contains { !rowsPreviewedAtCurrentWidth.contains(items[$0].identifier) }
     }
 
-    func previewVisibleRows(at width: CGFloat) {
+    func previewVisibleRows(at width: CGFloat, coverInsets: WorkspaceConversationCover.Insets) {
         guard let range = visiblePreviewRange() else { return }
         let metrics = NativeTimelineRowLayout.Metrics(source: parent.model)
         var didReflow = false
@@ -76,7 +83,7 @@ extension NativeMessageTimelineCoordinator {
             guard !rowsPreviewedAtCurrentWidth.contains(identifier) else {
                 continue
             }
-            let rowLayout = layout(for: items[index], width: width, metrics: metrics)
+            let rowLayout = layout(for: items[index], width: width, coverInsets: coverInsets, metrics: metrics)
             layouts[index] = rowLayout
             rowHeights[index] = rowLayout.height
             previewedRowIdentifiers.insert(identifier)
@@ -89,7 +96,7 @@ extension NativeMessageTimelineCoordinator {
     func restorePreviewedRows() {
         for index in items.indices
         where previewedRowIdentifiers.contains(items[index].identifier) {
-            let rowLayout = layout(for: items[index], width: layoutWidth)
+            let rowLayout = layout(for: items[index], width: layoutWidth, coverInsets: layoutCoverInsets)
             layouts[index] = rowLayout
             rowHeights[index] = rowLayout.height
         }
@@ -99,19 +106,32 @@ extension NativeMessageTimelineCoordinator {
     }
 
     func relayoutForWidthChange(_ proposedWidth: CGFloat) {
-        scheduleRelayoutForWidthChange(proposedWidth)
+        let insets = scrollView.map(resolvedCoverInsets(for:)) ?? layoutCoverInsets
+        scheduleRelayoutForGeometryChange(width: proposedWidth, coverInsets: insets)
     }
 
-    func scheduleRelayoutForWidthChange(_ proposedWidth: CGFloat) {
+    func scheduleRelayoutForGeometryChange(
+        width proposedWidth: CGFloat,
+        coverInsets proposedCoverInsets: WorkspaceConversationCover.Insets
+    ) {
         let width = max(220, proposedWidth.rounded())
-        guard abs(width - layoutWidth) >= 1 else {
+        let coverInsets = WorkspaceConversationCover.Insets(
+            leading: max(0, proposedCoverInsets.leading.rounded()),
+            trailing: max(0, proposedCoverInsets.trailing.rounded())
+        )
+        guard abs(width - layoutWidth) >= 1
+            || abs(coverInsets.leading - layoutCoverInsets.leading) >= 1
+            || abs(coverInsets.trailing - layoutCoverInsets.trailing) >= 1
+        else {
             widthRelayoutGeneration &+= 1
             widthRelayoutTask?.cancel()
             widthRelayoutTask = nil
             pendingLayoutWidth = nil
+            pendingCoverInsets = nil
             return
         }
         if pendingLayoutWidth == width,
+           pendingCoverInsets == coverInsets,
            widthRelayoutTask != nil
         {
             // Bounds notifications, scrolling, and unrelated timeline
@@ -125,18 +145,21 @@ extension NativeMessageTimelineCoordinator {
         else {
             _ = reconcileViewportGeometryIfNeeded(
                 proposedWidth: width,
+                proposedCoverInsets: coverInsets,
                 appliesWidthImmediately: true
             )
             return
         }
         pendingLayoutWidth = width
+        pendingCoverInsets = coverInsets
         widthRelayoutGeneration &+= 1
         let generation = widthRelayoutGeneration
         widthRelayoutTask?.cancel()
         // A workspace motion reschedules this on every frame, so only its
         // final width ever runs, as soon as the motion settles; the pause
-        // is for live window resizes, which end without notice.
-        let debounces = !WorkspaceLayoutMotion.isMoving
+        // is for live window resizes, which end without notice. A cover
+        // inset alone changes only when a column settles, so it applies at once.
+        let debounces = abs(width - layoutWidth) >= 1 && !WorkspaceLayoutMotion.isMoving
         widthRelayoutTask = Task { @MainActor [weak self] in
             if debounces {
                 do {
@@ -150,6 +173,7 @@ extension NativeMessageTimelineCoordinator {
             await WorkspaceLayoutMotion.untilSettled()
             guard !Task.isCancelled, let self,
                   self.pendingLayoutWidth == width,
+                  self.pendingCoverInsets == coverInsets,
                   self.widthRelayoutGeneration == generation
             else { return }
             self.widthRelayoutTask = nil
@@ -159,21 +183,24 @@ extension NativeMessageTimelineCoordinator {
 
     func applyPendingWidthRelayout() {
         guard let width = pendingLayoutWidth else { return }
+        let coverInsets = pendingCoverInsets ?? layoutCoverInsets
         widthRelayoutTask = nil
         guard items.count >= NativeTimelineWidthRelayoutPolicy
             .asynchronousRowThreshold
         else {
             pendingLayoutWidth = nil
+            pendingCoverInsets = nil
             _ = reconcileViewportGeometryIfNeeded(
                 proposedWidth: width,
+                proposedCoverInsets: coverInsets,
                 appliesWidthImmediately: true
             )
             return
         }
-        beginBatchedWidthRelayout(width)
+        beginBatchedWidthRelayout(width, coverInsets: coverInsets)
     }
 
-    func beginBatchedWidthRelayout(_ width: CGFloat) {
+    func beginBatchedWidthRelayout(_ width: CGFloat, coverInsets: WorkspaceConversationCover.Insets) {
         let sourceItems = items
         let metrics = NativeTimelineRowLayout.Metrics(source: parent.model)
         let sourceConversation = parent.conversation
@@ -198,14 +225,18 @@ extension NativeMessageTimelineCoordinator {
                 guard !Task.isCancelled,
                       self.widthRelayoutGeneration == generation,
                       self.pendingLayoutWidth == width,
+                      self.pendingCoverInsets == coverInsets,
                       self.parent.conversation == sourceConversation
                 else { return }
-                prepared[index] = self.layout(for: sourceItems[index], width: width, metrics: metrics)
+                prepared[index] = self.layout(
+                    for: sourceItems[index], width: width, coverInsets: coverInsets, metrics: metrics
+                )
                 guard await slice.pauseIfNeeded() else { return }
             }
             guard !Task.isCancelled,
                   self.widthRelayoutGeneration == generation,
                   self.pendingLayoutWidth == width,
+                  self.pendingCoverInsets == coverInsets,
                   self.parent.conversation == sourceConversation
             else { return }
             let preparedByIdentifier = Dictionary(
@@ -232,12 +263,14 @@ extension NativeMessageTimelineCoordinator {
                 {
                     return prepared.1
                 }
-                return self.layout(for: item, width: width)
+                return self.layout(for: item, width: width, coverInsets: coverInsets)
             }
             self.widthRelayoutTask = nil
             self.pendingLayoutWidth = nil
+            self.pendingCoverInsets = nil
             _ = self.reconcileViewportGeometryIfNeeded(
                 proposedWidth: width,
+                proposedCoverInsets: coverInsets,
                 appliesWidthImmediately: true,
                 preparedLayouts: finalLayouts
             )

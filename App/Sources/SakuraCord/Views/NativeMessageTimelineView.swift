@@ -4,7 +4,12 @@ import SakuraCordModels
 import SwiftUI
 
 @MainActor
-private final class NativeTimelineInputShieldScrollView: NSScrollView {
+protocol NativeTimelineScrollInsetsTarget: AnyObject {
+    var rightScrollerInset: CGFloat { get set }
+}
+
+@MainActor
+private final class NativeTimelineInputShieldScrollView: NSScrollView, NativeTimelineScrollInsetsTarget {
     var onWindowChange: (() -> Void)?
 
     override func viewDidMoveToWindow() {
@@ -24,8 +29,24 @@ private final class NativeTimelineInputShieldScrollView: NSScrollView {
     var topBarHeight: CGFloat = 0 {
         didSet { if topBarHeight != oldValue { tile() } }
     }
+    var rightScrollerInset: CGFloat = 0 {
+        didSet {
+            guard abs(rightScrollerInset - oldValue) > 0.25 else { return }
+            _ = updateTrailingScrollerInset()
+        }
+    }
+
+    @discardableResult
+    private func updateTrailingScrollerInset() -> Bool {
+        guard abs(scrollerInsets.right - rightScrollerInset) > 0.25 else { return false }
+        var insets = scrollerInsets
+        insets.right = rightScrollerInset
+        scrollerInsets = insets
+        return true
+    }
 
     override func tile() {
+        _ = updateTrailingScrollerInset()
         if keepScrollerBelowWindowToolbar(barHeight: topBarHeight) {
             // Content insets follow on the next turn, outside AppKit's tiling.
             Task { @MainActor [weak self] in self?.onToolbarObscuredHeightChange?() }
@@ -209,7 +230,23 @@ final class NativeMessageTimelineCoordinator: NSObject {
         struct CachedItemLayoutKey: Hashable {
             let identifier: NativeMessageTimelineItem.Identifier
             let roundedWidth: Int
+        let roundedLeadingSidebarInset: Int
+        let roundedTrailingInspectorInset: Int
             let presentationRevision: UInt64
+
+        init(
+            identifier: NativeMessageTimelineItem.Identifier,
+            roundedWidth: Int,
+            roundedLeadingSidebarInset: Int = 0,
+            roundedTrailingInspectorInset: Int = 0,
+            presentationRevision: UInt64
+        ) {
+            self.identifier = identifier
+            self.roundedWidth = roundedWidth
+            self.roundedLeadingSidebarInset = roundedLeadingSidebarInset
+            self.roundedTrailingInspectorInset = roundedTrailingInspectorInset
+            self.presentationRevision = presentationRevision
+        }
         }
 
         struct VisibleAnchor {
@@ -231,6 +268,8 @@ final class NativeMessageTimelineCoordinator: NSObject {
             let acceptsNewRows: Bool
             let width: CGFloat
             let widthChanged: Bool
+        let coverInsets: WorkspaceConversationCover.Insets
+        let insetChanged: Bool
             let restoreAnchor: VisibleAnchor?
             let disclosureAnchor: NativeTimelineRowDisclosure.ScrollAnchor?
         }
@@ -316,6 +355,7 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var isLeavingWorkspace = false
         var presentationRevision: UInt64 = 0
         var layoutWidth: CGFloat = 0
+    var layoutCoverInsets: WorkspaceConversationCover.Insets = .zero
         var didMutateItems = false
         var dirtyItemIndexes = IndexSet()
         var requiresVisibleRedraw = false
@@ -388,7 +428,9 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var lastScrollActivityUptime = 0.0
         var widthRelayoutTask: Task<Void, Never>?
         var pendingLayoutWidth: CGFloat?
+    var pendingCoverInsets: WorkspaceConversationCover.Insets?
         var previewLayoutWidth: CGFloat?
+    var previewCoverInsets: WorkspaceConversationCover.Insets?
         var previewedRowIdentifiers: Set<NativeMessageTimelineItem.Identifier> = []
         var rowsPreviewedAtCurrentWidth: Set<NativeMessageTimelineItem.Identifier> = []
         var widthRelayoutGeneration: UInt64 = 0
@@ -422,6 +464,7 @@ extension NativeMessageTimelineCoordinator {
             NativeTimelineRowLayout.make(
                 item: item,
                 width: self?.layoutWidth ?? 0,
+                coverInsets: self?.layoutCoverInsets ?? .zero,
                 source: self?.parent.model,
                 editingTextHeight: editingTextHeight
             )
@@ -478,7 +521,10 @@ extension NativeMessageTimelineCoordinator {
         self.canvas = canvas
         self.documentView = documentView
         self.scrollView = scrollView
-        scrollView.onWindowChange = { [weak self] in self?.timestampWindowChanged() }
+        scrollView.onWindowChange = { [weak self] in
+            self?.timestampWindowChanged()
+            _ = self?.reconcileViewportGeometryIfNeeded(appliesWidthImmediately: true)
+        }
         positionViewportCanvas()
         beginObserving(scrollView)
         update(parent: parent, scrollView: scrollView)
@@ -645,13 +691,24 @@ extension NativeMessageTimelineCoordinator {
         )
         isApplyingUpdate = true
         let measuredWidth = max(220, scrollView.contentView.bounds.width.rounded())
-        if layoutWidth > 0 { scheduleRelayoutForWidthChange(measuredWidth) }
+        let measuredCoverInsets = resolvedCoverInsets(for: scrollView)
+        if layoutWidth > 0 {
+            scheduleRelayoutForGeometryChange(
+                width: measuredWidth,
+                coverInsets: measuredCoverInsets
+            )
+        }
         let width = pendingLayoutWidth == nil ? measuredWidth : max(220, layoutWidth)
+        let coverInsets = pendingCoverInsets == nil
+            ? measuredCoverInsets
+            : layoutCoverInsets
         let widthChanged = abs(width - layoutWidth) >= 1
+        let insetChanged = abs(coverInsets.leading - layoutCoverInsets.leading) >= 1
+            || abs(coverInsets.trailing - layoutCoverInsets.trailing) >= 1
         let anchor = visibleAnchor()
         let disclosureAnchor = resolvedDisclosureAnchor(canvas: canvas, scrollView: scrollView)
         resetTimelineMutationState(
-            widthChanged: widthChanged,
+            geometryChanged: widthChanged || insetChanged,
             presentationChanged: presentationChanged
         )
         let preparation = TimelineUpdatePreparation(
@@ -668,6 +725,8 @@ extension NativeMessageTimelineCoordinator {
             acceptsNewRows: acceptsNewRows,
             width: width,
             widthChanged: widthChanged,
+            coverInsets: coverInsets,
+            insetChanged: insetChanged,
             restoreAnchor: anchor,
             disclosureAnchor: disclosureAnchor
         )
@@ -680,7 +739,9 @@ extension NativeMessageTimelineCoordinator {
         widthRelayoutTask?.cancel()
         widthRelayoutTask = nil
         pendingLayoutWidth = nil
+        pendingCoverInsets = nil
         previewLayoutWidth = nil
+        previewCoverInsets = nil
         previewedRowIdentifiers.removeAll()
         rowsPreviewedAtCurrentWidth.removeAll()
         leadingHistoryReserve = 0
@@ -725,14 +786,14 @@ extension NativeMessageTimelineCoordinator {
     }
 
     func resetTimelineMutationState(
-        widthChanged: Bool,
+        geometryChanged: Bool,
         presentationChanged: Bool
     ) {
         didMutateItems = false
         dirtyItemIndexes.removeAll()
-        requiresVisibleRedraw = widthChanged || presentationChanged || items.isEmpty
-        requiresAnchorRestore = widthChanged || presentationChanged
-        requiresFullOriginRebuild = widthChanged || presentationChanged
+        requiresVisibleRedraw = geometryChanged || presentationChanged || items.isEmpty
+        requiresAnchorRestore = geometryChanged || presentationChanged
+        requiresFullOriginRebuild = geometryChanged || presentationChanged
         appendedLayoutCount = 0
         didPrependItems = false
         performanceUpdatePath = "none"
@@ -759,6 +820,7 @@ extension NativeMessageTimelineCoordinator {
            let highlightedMessageID = parent.highlightedMessageID {
             canvas.startMessageJumpHighlight(highlightedMessageID)
         }
+        let geometryChanged = preparation.widthChanged || preparation.insetChanged
         // Collapsing changes the item-to-message cardinality. Reconcile the
         // affected conversation as a projection while retaining source rows;
         // unchanged rows keep their layouts, so revealing a run lays out only it.
@@ -767,12 +829,14 @@ extension NativeMessageTimelineCoordinator {
             || preparation.newRows.contains(where: { parent.model.isMessageSuppressed($0.message)
                 || $0.replyPreview.map { parent.model.userSuppressionReason($0.author.id) != nil } == true }) {
             layoutWidth = preparation.width
+            layoutCoverInsets = preparation.coverInsets
             rebuildAll(from: parent, rows: preparation.newRows, width: preparation.width,
-                       force: preparation.widthChanged || preparation.presentationChanged)
+                       force: geometryChanged || preparation.presentationChanged)
             return
         }
-        if preparation.widthChanged || preparation.presentationChanged {
+        if geometryChanged || preparation.presentationChanged {
             layoutWidth = preparation.width
+            layoutCoverInsets = preparation.coverInsets
             if preparation.acceptsNewRows, !preparation.hasUnpublishedRows {
                 rebuildAll(
                     from: parent,
@@ -781,7 +845,13 @@ extension NativeMessageTimelineCoordinator {
                     force: true
                 )
             } else {
-                layouts = items.map { layout(for: $0, width: preparation.width) }
+                layouts = items.map {
+                    layout(
+                        for: $0,
+                        width: preparation.width,
+                        coverInsets: preparation.coverInsets
+                    )
+                }
                 rowHeights = layouts.map(\.height)
                 didMutateItems = true
                 performanceUpdatePath = preparation.presentationChanged
@@ -1096,7 +1166,9 @@ extension NativeMessageTimelineCoordinator {
         widthRelayoutTask?.cancel()
         widthRelayoutTask = nil
         pendingLayoutWidth = nil
+        pendingCoverInsets = nil
         previewLayoutWidth = nil
+        previewCoverInsets = nil
         previewedRowIdentifiers.removeAll()
         rowsPreviewedAtCurrentWidth.removeAll()
         widthRelayoutGeneration &+= 1
@@ -1229,6 +1301,8 @@ extension NativeMessageTimelineCoordinator {
         let key = CachedItemLayoutKey(
             identifier: item.identifier,
             roundedWidth: Int(layoutWidth.rounded()),
+            roundedLeadingSidebarInset: Int(layoutCoverInsets.leading.rounded()),
+            roundedTrailingInspectorInset: Int(layoutCoverInsets.trailing.rounded()),
             presentationRevision: presentationRevision
         )
         let inserted = cachedItemLayouts.updateValue(
@@ -1262,25 +1336,37 @@ extension NativeMessageTimelineCoordinator {
     func layoutUsingRecentConversationCache(
         for item: NativeMessageTimelineItem,
         width: CGFloat,
+        coverInsets: WorkspaceConversationCover.Insets? = nil,
         presentationRevision: UInt64
     ) -> NativeTimelineRowLayout {
+        let resolvedInsets = coverInsets ?? layoutCoverInsets
         if let cached = cachedItemLayout(
-            for: item, width: width, presentationRevision: presentationRevision
+            for: item,
+            width: width,
+            coverInsets: resolvedInsets,
+            presentationRevision: presentationRevision
         ) {
             recentLayoutCacheHits += 1
             return cached
         }
-        return layout(for: item, width: width)
+        return layout(
+            for: item,
+            width: width,
+            coverInsets: resolvedInsets
+        )
     }
 
     func cachedItemLayout(
         for item: NativeMessageTimelineItem,
         width: CGFloat,
+        coverInsets: WorkspaceConversationCover.Insets = .zero,
         presentationRevision: UInt64
     ) -> NativeTimelineRowLayout? {
         let key = CachedItemLayoutKey(
             identifier: item.identifier,
             roundedWidth: Int(width.rounded()),
+            roundedLeadingSidebarInset: Int(coverInsets.leading.rounded()),
+            roundedTrailingInspectorInset: Int(coverInsets.trailing.rounded()),
             presentationRevision: presentationRevision
         )
         guard let cached = cachedItemLayouts[key],

@@ -33,6 +33,9 @@ extension NativeMessageTimelineCoordinator {
     func updateInsets() {
         guard let scrollView, let canvas else { return }
         let viewportHeight = scrollView.contentView.bounds.height
+        if let shieldScrollView = scrollView as? NativeTimelineScrollInsetsTarget {
+            shieldScrollView.rightScrollerInset = (previewCoverInsets ?? layoutCoverInsets).trailing
+        }
         canvas.updateContentOriginY(
             contentOriginY(viewportHeight: viewportHeight),
             minimumHeight: max(1, viewportHeight),

@@ -16,6 +16,7 @@ struct VoiceChannelView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padsForWorkspaceConversationCover()
     }
 
     @ViewBuilder private var connectedContent: some View {

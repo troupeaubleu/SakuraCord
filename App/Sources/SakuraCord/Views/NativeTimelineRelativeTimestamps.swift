@@ -33,7 +33,10 @@ extension NativeMessageTimelineCoordinator {
     }
 
     func refreshTimestampLayouts(at date: Date) {
-        guard !isApplyingUpdate, layoutPreparation == nil, pendingLayoutWidth == nil,
+        guard !isApplyingUpdate,
+              layoutPreparation == nil,
+              pendingLayoutWidth == nil,
+              pendingCoverInsets == nil,
               let canvas, let scrollView, layoutWidth > 0,
               let visibleRange = visiblePreviewRange()
         else { return }
@@ -56,7 +59,11 @@ extension NativeMessageTimelineCoordinator {
             where: { changedIdentifiers.contains($0.identifier) },
             on: canvas, in: scrollView,
             // Deliberately bypass layoutPreparation and recent-conversation caches.
-            layout: { NativeTimelineRowLayout.make(item: $0, width: layoutWidth, source: parent.model, relativeTo: date) }
+            layout: {
+                NativeTimelineRowLayout.make(
+                    item: $0, width: layoutWidth, coverInsets: layoutCoverInsets, source: parent.model, relativeTo: date
+                )
+            }
         )
     }
 }

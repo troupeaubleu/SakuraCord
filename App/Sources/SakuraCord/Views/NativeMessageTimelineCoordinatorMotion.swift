@@ -21,6 +21,17 @@ extension NativeMessageTimelineCoordinator {
                     _ = self.reconcileViewportGeometryIfNeeded()
                 }
             },
+            center.addObserver(forName: WorkspaceConversationCover.didChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let scrollView = self.scrollView else { return }
+                    let currentInsets = self.resolvedCoverInsets(for: scrollView)
+                    let activeInsets = self.previewCoverInsets ?? self.layoutCoverInsets
+                    guard abs(currentInsets.leading - activeInsets.leading) >= 0.5
+                        || abs(currentInsets.trailing - activeInsets.trailing) >= 0.5
+                    else { return }
+                    _ = self.reconcileViewportGeometryIfNeeded()
+                }
+            },
             center.addObserver(forName: WorkspaceLayoutMotion.didSettle, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self, self.scrollIdleTask == nil else { return }
@@ -39,5 +50,14 @@ extension NativeMessageTimelineCoordinator {
               abs(width - scrollView.contentView.bounds.width) >= 0.5
         else { return nil }
         return width
+    }
+
+    func resolvedCoverInsets(for scrollView: NSScrollView) -> WorkspaceConversationCover.Insets {
+        guard scrollView.window != nil else { return .zero }
+        let raw = WorkspaceConversationCover.shared.insets(for: scrollView)
+        return WorkspaceConversationCover.Insets(
+            leading: max(0, raw.leading.rounded()),
+            trailing: max(0, raw.trailing.rounded())
+        )
     }
 }

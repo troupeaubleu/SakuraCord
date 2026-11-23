@@ -67,6 +67,7 @@ struct ChatWorkspaceView: View, Equatable {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padsForWorkspaceConversationCover()
         }
     }
 
@@ -133,9 +134,10 @@ struct ChatWorkspaceView: View, Equatable {
                 ? nil : motion.wideningHasArrived ? .arriving : .starting,
             supplementaryPaneFrameChanged: { supplementaryPaneFrame = $0 }
         )
-        // Spans the window's top edge so the columns scroll under the
-        // toolbar; each column's hosting view insets its own content from it.
-        .ignoresSafeArea(.container, edges: .top)
+        // Spans the window's top and leading edges so columns and full-bleed
+        // media can scroll under the toolbar and sidebar; hosting views inset
+        // their own content from the safe area.
+        .ignoresSafeArea(.container, edges: [.top, .leading])
         .preference(key: SupplementaryPaneFramePreferenceKey.self, value: supplementaryPaneFrame)
     }
 
@@ -185,6 +187,7 @@ private struct ChatWorkspacePrimaryContent: View {
                 VStack(spacing: 0) {
                     if let channel = model.selectedChannel {
                         EmbeddedActivityJoinBanner(model: model, channel: channel)
+                            .padsForWorkspaceConversationCover()
                     }
                     ChatDetailView(model: model)
                 }

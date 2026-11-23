@@ -42,8 +42,10 @@ struct ForumChannelView: View {
                     reportPresentedForum(channel.id)
                 }
                 .onAppear { reportPresentedForum(channel.id) }
+                .padsForWorkspaceConversationCover()
         } else {
             ContentUnavailableView("Choose a forum", systemImage: "rectangle.3.group.bubble")
+                .padsForWorkspaceConversationCover()
         }
     }
 

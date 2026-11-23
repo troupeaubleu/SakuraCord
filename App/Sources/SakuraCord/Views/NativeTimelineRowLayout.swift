@@ -286,28 +286,41 @@ struct NativeTimelineRowLayout {
     static func make(
         item: NativeMessageTimelineItem,
         width proposedWidth: CGFloat,
+        coverInsets: WorkspaceConversationCover.Insets = .zero,
         source: AppModel? = nil,
         metrics: Metrics? = nil,
         relativeTo date: Date = .now,
         editingTextHeight: CGFloat? = nil
     ) -> Self {
-        let width = max(InterfaceScale.metric(220), proposedWidth)
+        let minimumWidth = InterfaceScale.metric(160)
+        let width = max(minimumWidth, proposedWidth)
+        let leadingInset = max(0, min(coverInsets.leading, width - minimumWidth))
+        let trailingInset = max(
+            0,
+            min(coverInsets.trailing, width - leadingInset - minimumWidth)
+        )
+        let contentBoundsWidth = max(minimumWidth, width - leadingInset - trailingInset)
         switch item {
         case let .suppressedMessages(group):
             var result = Self(height: NativeTimelineSuppressedHeaderLayout.contentHeight)
             var offset: CGFloat = 0
             if group.day != nil {
-                result.daySeparatorFrame = CGRect(x: InterfaceScale.metric(12), y: offset,
-                                                  width: width - InterfaceScale.metric(24), height: NativeTimelineDateSeparatorMetrics.rowHeight)
+                result.daySeparatorFrame = CGRect(x: leadingInset + InterfaceScale.metric(12), y: offset,
+                                                  width: contentBoundsWidth - InterfaceScale.metric(24), height: NativeTimelineDateSeparatorMetrics.rowHeight)
                 offset += NativeTimelineDateSeparatorMetrics.rowHeight
                 if group.isUnreadBoundary { result.foldedUnreadDay = group.day }
             } else if group.isUnreadBoundary {
-                result.unreadSeparatorFrame = CGRect(x: InterfaceScale.metric(12), y: offset,
-                                                     width: width - InterfaceScale.metric(24), height: NativeTimelineUnreadSeparatorMetrics.rowHeight)
+                result.unreadSeparatorFrame = CGRect(x: leadingInset + InterfaceScale.metric(12), y: offset,
+                                                     width: contentBoundsWidth - InterfaceScale.metric(24), height: NativeTimelineUnreadSeparatorMetrics.rowHeight)
                 offset += NativeTimelineUnreadSeparatorMetrics.rowHeight
             }
             result.height += offset
-            result.suppressedHeader = .make(group: group, width: width, originY: offset)
+            result.suppressedHeader = .make(
+                group: group,
+                width: contentBoundsWidth,
+                leadingInset: leadingInset,
+                originY: offset
+            )
             return result
         case .inboxGroup:
             return Self(height: InboxRowMetrics.headerHeight)
@@ -319,7 +332,8 @@ struct NativeTimelineRowLayout {
             let loaderLayout = NativeTimelineLoaderLayout.make(
                 isLoading: isLoading,
                 kind: kind,
-                width: width
+                width: contentBoundsWidth,
+                leadingInset: leadingInset
             )
             return Self(
                 height: loaderLayout.height,
@@ -329,7 +343,8 @@ struct NativeTimelineRowLayout {
         case let .beginning(beginning):
             let beginningLayout = NativeTimelineBeginningLayout.make(
                 beginning: beginning,
-                width: width,
+                width: contentBoundsWidth,
+                leadingInset: leadingInset,
                 source: source,
                 relativeTo: date
             )
@@ -342,6 +357,7 @@ struct NativeTimelineRowLayout {
                 row: row,
                 isUnreadBoundary: isUnreadBoundary,
                 width: width,
+                coverInsets: WorkspaceConversationCover.Insets(leading: leadingInset, trailing: trailingInset),
                 source: source,
                 metrics: metrics ?? Metrics(source: source),
                 relativeTo: date,
@@ -363,15 +379,17 @@ struct NativeTimelineBeginningLayout {
     static func make(
         beginning: NativeTimelineBeginning,
         width: CGFloat,
+        leadingInset: CGFloat = 0,
         source: AppModel? = nil,
         relativeTo date: Date = .now
     ) -> Self {
         let horizontalInset: CGFloat = InterfaceScale.metric(16)
+        let originX = leadingInset + horizontalInset
         let contentWidth = max(
             1,
             width - horizontalInset * 2
         )
-        let iconFrame = CGRect(x: horizontalInset, y: InterfaceScale.metric(28), width: InterfaceScale.metric(68), height: InterfaceScale.metric(68))
+        let iconFrame = CGRect(x: originX, y: InterfaceScale.metric(28), width: InterfaceScale.metric(68), height: InterfaceScale.metric(68))
         let titleFont = NSFont.interfaceSystemFont(
             ofSize: NSFont.preferredFont(forTextStyle: .largeTitle).pointSize,
             weight: .bold
@@ -382,7 +400,7 @@ struct NativeTimelineBeginningLayout {
             width: contentWidth
         )
         let titleFrame = CGRect(
-            x: horizontalInset,
+            x: originX,
             y: iconFrame.maxY + InterfaceScale.metric(9),
             width: contentWidth,
             height: titleHeight
@@ -397,14 +415,14 @@ struct NativeTimelineBeginningLayout {
             width: contentWidth
         )
         let descriptionFrame = CGRect(
-            x: horizontalInset,
+            x: originX,
             y: titleFrame.maxY + InterfaceScale.metric(9),
             width: contentWidth,
             height: descriptionHeight
         )
         let contentHeight = descriptionFrame.maxY + 18
         let dateSeparatorFrame = beginning.startedAt.map { _ in
-            CGRect(x: 0, y: contentHeight, width: width, height: InterfaceScale.metric(37))
+            CGRect(x: leadingInset, y: contentHeight, width: width, height: InterfaceScale.metric(37))
         }
         return Self(
             iconFrame: iconFrame,
@@ -467,7 +485,8 @@ struct NativeTimelineLoaderLayout {
     static func make(
         isLoading: Bool,
         kind: NativeTimelineLoaderKind,
-        width: CGFloat
+        width: CGFloat,
+        leadingInset: CGFloat = 0
     ) -> Self {
         guard isLoading else {
             return Self(
@@ -493,7 +512,7 @@ struct NativeTimelineLoaderLayout {
             height: max(spinnerSize, labelSize.height)
         )
         let controlFrame = CGRect(
-            x: (width - controlSize.width) / 2,
+            x: leadingInset + (width - controlSize.width) / 2,
             y: InterfaceScale.metric(10),
             width: controlSize.width,
             height: controlSize.height
@@ -526,13 +545,14 @@ struct NativeTimelineSearchPrefixLayout {
 
     static func make(
         context: MessageSearchRowContext?,
-        width: CGFloat
+        width: CGFloat,
+        leadingInset: CGFloat = 0
     ) -> Self {
         guard let context, context.showsSectionHeader else {
             return Self(region: nil, height: 0)
         }
         let sectionFrame = CGRect(
-            x: InterfaceScale.metric(10),
+            x: leadingInset + InterfaceScale.metric(10),
             y: InterfaceScale.metric(8),
             width: max(1, width - InterfaceScale.metric(20)),
             height: InterfaceScale.metric(24)

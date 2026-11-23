@@ -75,6 +75,41 @@ func `a reopened side chat pane reports its frame again`() async throws {
 }
 
 @MainActor
+@Test
+func `an inspector overlaps the conversation while publishing its covered trailing inset`() {
+    let host = WorkspaceColumnsView(frame: NSRect(x: 0, y: 0, width: 1440, height: 739))
+    let window = NSWindow(
+        contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false
+    )
+    window.contentView = host
+    defer { window.contentView = nil }
+    let environment = EnvironmentValues()
+
+    host.apply(
+        spec([column(isSideConversation: false, fullWidth: false)]),
+        environment: environment,
+        animates: false
+    )
+    host.layoutSubtreeIfNeeded()
+
+    let conversation = host.subviews.first
+    let inspector = host.subviews.last
+    #expect(conversation?.frame.width == host.bounds.width)
+    #expect(inspector?.frame.width == paneWidth)
+    #expect(inspector?.frame.maxX == host.bounds.maxX)
+    if let conversation, let inspector {
+        #expect(WorkspaceConversationCover.shared.trailingInset(for: conversation) == paneWidth)
+        #expect(WorkspaceConversationCover.shared.trailingInset(for: inspector) == 0)
+    }
+
+    host.apply(spec([]), environment: environment, animates: false)
+    host.layoutSubtreeIfNeeded()
+    if let conversation {
+        #expect(WorkspaceConversationCover.shared.trailingInset(for: conversation) == 0)
+    }
+}
+
+@MainActor
 private final class ReportedFrame {
     var frame = CGRect.zero
 
@@ -101,12 +136,16 @@ private func spec(
 }
 
 @MainActor
-private func column(fullWidth: Bool, reportsFrame: Bool = false) -> WorkspaceColumnsHost.Column {
+private func column(
+    isSideConversation: Bool = true,
+    fullWidth: Bool,
+    reportsFrame: Bool = false
+) -> WorkspaceColumnsHost.Column {
     let pane = Color.clear.frame(minWidth: 340, idealWidth: paneWidth, maxWidth: paneWidth, maxHeight: .infinity)
     return WorkspaceColumnsHost.Column(
         id: "side-thread-regression",
-        isSideConversation: true,
-        isThread: true,
+        isSideConversation: isSideConversation,
+        isThread: isSideConversation,
         isFullWidth: fullWidth,
         content: fullWidth
             ? AnyView(Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity))

@@ -28,20 +28,25 @@ struct NativeTimelineSuppressedHeaderLayout: Equatable {
     let textFrame: CGRect
     let toggleFrame: CGRect
 
-    static func make(group: SuppressedMessageGroup, width: CGFloat, originY: CGFloat) -> Self {
+    static func make(
+        group: SuppressedMessageGroup,
+        width: CGFloat,
+        leadingInset: CGFloat = 0,
+        originY: CGFloat
+    ) -> Self {
         let lineHeight = MessageRowLayoutMetrics.compactContentHeight
         let lineY = originY + (contentHeight - lineHeight) / 2
         let horizontalInset = group.contextTitle == nil ? MessageRowLayoutMetrics.horizontalInset : 22
-        let textX = horizontalInset + MessageRowLayoutMetrics.avatarDiameter + InterfaceScale.metric(20)
-        let textWidth = max(0, width - textX - horizontalInset)
+        let textX = leadingInset + horizontalInset + MessageRowLayoutMetrics.avatarDiameter + InterfaceScale.metric(20)
+        let textWidth = max(0, leadingInset + width - textX - horizontalInset)
         let prefixWidth = ceil(prefix(for: group).size().width)
         let toggleWidth = ceil(toggle(for: group, isHovered: false).size().width)
         let visiblePrefixWidth = min(prefixWidth, max(0, textWidth - toggleWidth))
         let labelWidth = prefixWidth <= visiblePrefixWidth ? prefixWidth : max(0, visiblePrefixWidth - InterfaceScale.metric(4))
         return Self(
-            highlightFrame: CGRect(x: 0, y: originY, width: width, height: contentHeight),
+            highlightFrame: CGRect(x: leadingInset, y: originY, width: width, height: contentHeight),
             iconFrame: CGRect(
-                x: horizontalInset + InterfaceScale.metric(36), y: lineY,
+                x: leadingInset + horizontalInset + InterfaceScale.metric(36), y: lineY,
                 width: InterfaceScale.metric(16), height: lineHeight
             ),
             textFrame: CGRect(x: textX, y: lineY, width: labelWidth, height: lineHeight),

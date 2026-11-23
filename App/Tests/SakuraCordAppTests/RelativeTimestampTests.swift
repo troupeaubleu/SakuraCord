@@ -103,7 +103,10 @@ private func timestampAttachment(in text: NSAttributedString) -> MentionTextAtta
     // A stale recent-conversation layout must not win over the clock refresh.
     let key = NativeMessageTimelineCoordinator.CachedItemLayoutKey(
         identifier: coordinator.items[index].identifier,
-        roundedWidth: Int(coordinator.layoutWidth.rounded()), presentationRevision: coordinator.presentationRevision
+        roundedWidth: Int(coordinator.layoutWidth.rounded()),
+        roundedLeadingSidebarInset: Int(coordinator.layoutCoverInsets.leading.rounded()),
+        roundedTrailingInspectorInset: Int(coordinator.layoutCoverInsets.trailing.rounded()),
+        presentationRevision: coordinator.presentationRevision
     )
     coordinator.cachedItemLayouts[key] = .init(item: coordinator.items[index], layout: coordinator.layouts[index])
     coordinator.refreshTimestampLayouts(at: after)

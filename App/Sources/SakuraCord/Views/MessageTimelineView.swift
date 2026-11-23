@@ -103,6 +103,7 @@ struct MessageTimelineView: View {
                 }
             }
             .padding(InterfaceScale.metric(8))
+            .padsForWorkspaceConversationCover()
         }
         .overlay(alignment: .bottom) {
             if TimelineNewestButtonPolicy.isShown(
@@ -127,6 +128,7 @@ struct MessageTimelineView: View {
                         requestScroll(.bottom, glides: true)
                     }
                 }
+                .padsForWorkspaceConversationCover()
             }
         }
         .onChange(of: model.selectedChannelID) { oldID, _ in
@@ -741,7 +743,7 @@ struct MessageTimelineLoadingChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .scrollEdgeEffectStyle(.soft, for: .top)
-            .ignoresSafeArea(.container, edges: .top)
+            .ignoresSafeArea(.container, edges: [.top, .leading])
             .opacity(showsLoadingSkeleton ? 0 : 1)
             .allowsHitTesting(!showsLoadingSkeleton)
             .accessibilityHidden(showsLoadingSkeleton)

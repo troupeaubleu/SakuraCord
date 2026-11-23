@@ -37,18 +37,20 @@ struct ThreadConversationView: View {
                     editRequest: editRequest
                 )
                 .overlay(alignment: .bottom) {
-                    ThreadConversationFooter(
-                        model: model,
-                        thread: thread,
-                        footerHeightChanged: { height in
-                            floatingFooterHeight = height
-                        },
-                        onEditMessage: { messageID in
-                            editRequest = MessageTimelineEditRequest(
-                                messageID: messageID
-                            )
-                        }
-                    )
+                    ConversationFooterHost {
+                        ThreadConversationFooter(
+                            model: model,
+                            thread: thread,
+                            footerHeightChanged: { height in
+                                floatingFooterHeight = height
+                            },
+                            onEditMessage: { messageID in
+                                editRequest = MessageTimelineEditRequest(
+                                    messageID: messageID
+                                )
+                            }
+                        )
+                    }
                 }
             }
         } else if let creation = model.threadCreation {
@@ -464,6 +466,7 @@ private struct ThreadMessageTimelineView: View {
                     }
                 )
                 .padding(InterfaceScale.metric(8))
+                .padsForWorkspaceConversationCover()
             }
         }
         .overlay(alignment: .bottom) {
@@ -481,6 +484,7 @@ private struct ThreadMessageTimelineView: View {
                         requestScroll(.bottom, glides: true)
                     }
                 }
+                .padsForWorkspaceConversationCover()
             }
         }
         .onChange(of: isLeaving ? nil : liveOverlays, initial: true) { _, overlays in

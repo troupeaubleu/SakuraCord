@@ -472,12 +472,13 @@ final class WorkspaceColumnsView: NSView {
         // While the display link places the columns, a layout pass between
         // its frames has nothing to move, and placed them for now rather
         // than for the frame's display time: a step back.
-        if displayLink != nil, placedBounds == bounds { return }
+        if displayLink != nil, placedBounds == bounds, placedLeadingSafeArea == safeAreaInsets.left { return }
         layoutColumns(at: CACurrentMediaTime())
     }
 
-    /// The bounds the columns were last placed in.
+    /// The bounds and leading safe area the columns were last placed in.
     private var placedBounds: CGRect?
+    private var placedLeadingSafeArea: CGFloat?
 
     override func setFrameSize(_ newSize: NSSize) {
         if newSize != frame.size { needsMeasurement = true }
@@ -564,15 +565,9 @@ final class WorkspaceColumnsView: NSView {
         }
         guard let fullWidth = islands.last(where: \.column.isFullWidth), view.isDescendant(of: fullWidth.view)
         else { return nil }
-        var inspectorCovered: CGFloat = 0
-        for island in islands where !island.column.isFullWidth && !island.column.isSideConversation {
-            let shown = width(of: island.column) * island.reveal.value(at: time, provisionalStart: time)
-            inspectorCovered = max(inspectorCovered, shown)
-        }
-        let trailingEdge = bounds.maxX - inspectorCovered
         let recede = widening?.value(at: time, provisionalStart: time) ?? 1
         return backingAlignedRect(
-            fullWidthFrame(trailingEdge: trailingEdge, recede: recede), options: .alignAllEdgesNearest
+            fullWidthFrame(trailingEdge: bounds.maxX, recede: recede), options: .alignAllEdgesNearest
         ).width
     }
 
@@ -581,7 +576,7 @@ final class WorkspaceColumnsView: NSView {
     private func conversationWidth(at time: CFTimeInterval, provisionalStart: CFTimeInterval) -> CGFloat {
         let covered = islands.contains(where: \.column.isFullWidth)
             ? sideConversationWidth
-            : trailingCoverage(at: time, provisionalStart: provisionalStart)
+            : trailingCoverage(at: time, provisionalStart: provisionalStart, where: \.isSideConversation)
         let frame = CGRect(x: 0, y: 0, width: max(0, bounds.width - covered), height: bounds.height)
         return backingAlignedRect(frame, options: .alignAllEdgesNearest).width
     }
@@ -594,10 +589,14 @@ final class WorkspaceColumnsView: NSView {
     /// chat that replaces another in place arrives at once while the column
     /// it interrupted is still leaving, so the cover stops at the widest
     /// column in view.
-    private func trailingCoverage(at time: CFTimeInterval, provisionalStart: CFTimeInterval?) -> CGFloat {
+    private func trailingCoverage(
+        at time: CFTimeInterval,
+        provisionalStart: CFTimeInterval?,
+        where predicate: (WorkspaceColumnsHost.Column) -> Bool = { _ in true }
+    ) -> CGFloat {
         var covered: CGFloat = 0
         var widest: CGFloat = 0
-        for island in islands where !island.column.isFullWidth {
+        for island in islands where !island.column.isFullWidth && predicate(island.column) {
             let width = width(of: island.column)
             let reveal = island.reveal.value(at: time, provisionalStart: provisionalStart)
             covered += width * reveal
@@ -616,6 +615,7 @@ final class WorkspaceColumnsView: NSView {
     /// Places every island where the motion has it at `time`.
     private func layoutColumns(at time: CFTimeInterval) {
         placedBounds = bounds
+        placedLeadingSafeArea = safeAreaInsets.left
         // The path stays active through the placement below, and its stop is
         // announced only once the columns are where they settle. Announced
         // earlier, a timeline whose host is about to contract would drop the
@@ -625,15 +625,17 @@ final class WorkspaceColumnsView: NSView {
         publishWidthPath(at: time, isMoving: animating || stopsPath)
         measureColumns()
         let bounds = bounds
-        // How much of the trailing edge the columns cover, which the
-        // conversation gives up, and how much of it inspectors cover, which
-        // a full-width side chat gives up.
+        let leadingCovered = max(0, safeAreaInsets.left)
+        // How much of the trailing edge the columns cover: split side chats
+        // clip the conversation before them, while translucent inspectors
+        // float above so media can scroll underneath while keeping the rest
+        // of the conversation content padded clear of the inspector.
         var covered = trailingCoverage(at: time, provisionalStart: nil)
-        var inspectorCovered: CGFloat = 0
+        let sideCovered = trailingCoverage(at: time, provisionalStart: nil, where: \.isSideConversation)
+        let inspectorCovered = trailingCoverage(at: time, provisionalStart: nil) { !$0.isSideConversation }
         for island in islands where !island.column.isFullWidth {
             let width = width(of: island.column)
             let shown = width * island.reveal.value(at: time)
-            if !island.column.isSideConversation { inspectorCovered = max(inspectorCovered, shown) }
             // A column leaving as another arrives stays against the
             // conversation, beneath the arriving one, so nothing opens
             // between them.
@@ -664,19 +666,33 @@ final class WorkspaceColumnsView: NSView {
         }
         // How far a widening side chat has covered the conversation.
         var recede: CGFloat = 0
-        if let fullWidth = islands.last(where: \.column.isFullWidth) {
-            let trailingEdge = bounds.maxX - inspectorCovered
+        let fullWidthIsland = islands.last(where: \.column.isFullWidth)
+        if let fullWidth = fullWidthIsland {
             recede = widening?.value(at: time) ?? 1
-            setFrame(of: fullWidth.view, fullWidthFrame(trailingEdge: trailingEdge, recede: recede))
+            setFrame(of: fullWidth.view, fullWidthFrame(trailingEdge: bounds.maxX, recede: recede))
             // The conversation keeps the width it had beside the pane while
             // the side chat widens over it.
             covered = sideConversationWidth
         }
-        conversationFrame = CGRect(x: 0, y: 0, width: max(0, bounds.width - covered), height: bounds.height)
+        let visibleEnd = max(leadingCovered, bounds.width - covered)
+        conversationFrame = CGRect(
+            x: leadingCovered,
+            y: 0,
+            width: max(0, visibleEnd - leadingCovered),
+            height: bounds.height
+        )
+        let conversationHostWidth = fullWidthIsland != nil
+            ? max(0, bounds.width - covered)
+            : max(0, bounds.width - sideCovered)
         // Beneath a widening side chat, the conversation recedes: it drifts
         // toward the leading edge and fades as it is covered, rather than
         // vanishing at once. Moving it changes no size, so it lays nothing out.
-        var hostFrame = conversationFrame.offsetBy(dx: -conversationFrame.width * Self.recedeDistance * recede, dy: 0)
+        var hostFrame = CGRect(
+            x: -conversationFrame.width * Self.recedeDistance * recede,
+            y: 0,
+            width: conversationHostWidth,
+            height: bounds.height
+        )
         // While only the member list or search results move, the
         // conversation keeps the wider of its widths and the column slides
         // over it: laying the conversation out again on every frame took
@@ -690,15 +706,11 @@ final class WorkspaceColumnsView: NSView {
             hostFrame.size.width = min(bounds.width, max(hostFrame.width, settled, host.frame.width))
             retainsHost = true
         }
-        // The host's width jumps only where this optimization begins (a
-        // closing list widens it at once) or ends (it contracts on the
-        // settling frame). While it lasts, the host may still follow the
-        // window or sidebar, which stays an ordinary deferred resize.
         let handsOffHost = retainsHost != retainsHostWidth
             && abs((conversation?.view.frame.width ?? 0) - hostFrame.width) >= 0.5
         retainsHostWidth = retainsHost
         setFrame(of: conversationClip, CGRect(
-            x: hostFrame.minX, y: 0, width: min(hostFrame.width, conversationFrame.width), height: bounds.height
+            x: hostFrame.minX, y: 0, width: hostFrame.width, height: bounds.height
         ))
         // The timeline inside sees the handoff only while the host changes
         // size and lays out, so it can paint that width change at once.
@@ -706,8 +718,12 @@ final class WorkspaceColumnsView: NSView {
             setFrame(of: conversation?.view, CGRect(origin: .zero, size: hostFrame.size))
             if handsOffHost { conversation?.view.layoutSubtreeIfNeeded() }
         }
-        WorkspaceConversationCover.shared.update(
-            trailingInset: max(0, (conversation?.view.frame.width ?? 0) - conversationFrame.width)
+        updateConversationCoverInsets(
+            leadingCovered: leadingCovered,
+            inspectorCovered: inspectorCovered,
+            hostMaxX: hostFrame.maxX,
+            visibleEnd: visibleEnd,
+            fullWidthIsland: fullWidthIsland
         )
         conversation?.view.alphaValue = 1 - recede
         // Lay the resized columns out now, in the frame that moves them: left
@@ -718,7 +734,42 @@ final class WorkspaceColumnsView: NSView {
         resizedViews.removeAll()
         if stopsPath { publishWidthPath(at: time, isMoving: false) }
         reportPaneFrame()
-        publishGeometry(at: time)
+        publishGeometry(at: time, leadingCovered: leadingCovered)
+    }
+
+    private func updateConversationCoverInsets(
+        leadingCovered: CGFloat,
+        inspectorCovered: CGFloat,
+        hostMaxX: CGFloat,
+        visibleEnd: CGFloat,
+        fullWidthIsland: Island?
+    ) {
+        let conversationInspectorInset = fullWidthIsland != nil
+            ? 0
+            : max(0, hostMaxX - visibleEnd)
+        let conversationInsets = WorkspaceConversationCover.Insets(
+            leading: leadingCovered,
+            trailing: conversationInspectorInset
+        )
+        let fullWidthView = fullWidthIsland?.view
+        let fullWidthInsets = fullWidthView.map {
+            WorkspaceConversationCover.Insets(
+                leading: max(0, leadingCovered - $0.frame.minX),
+                trailing: inspectorCovered
+            )
+        }
+        WorkspaceConversationCover.shared.update(
+            insets: fullWidthInsets ?? conversationInsets
+        ) { [weak self, weak fullWidthView] view in
+            guard let self else { return .zero }
+            if view.isDescendant(of: self.conversationClip) {
+                return conversationInsets
+            }
+            if let fullWidthView, let fullWidthInsets, view.isDescendant(of: fullWidthView) {
+                return fullWidthInsets
+            }
+            return .zero
+        }
     }
 
     /// Whether the only columns in motion are inspectors (the member list,
@@ -736,20 +787,22 @@ final class WorkspaceColumnsView: NSView {
 
     /// Tells the toolbar where the columns are, so their items move with
     /// them in the same frame.
-    private func publishGeometry(at time: CFTimeInterval) {
+    private func publishGeometry(at time: CFTimeInterval, leadingCovered: CGFloat) {
         guard window != nil else { return }
         // Where the conversation rests: its items do not recede with it.
         let conversationFrame = conversation.map { _ in convert(conversationFrame, to: nil) }
+        let leadingSidebarEdge = convert(CGPoint(x: leadingCovered, y: 0), to: nil).x
         let widening = widening?.value(at: time) ?? 1
         WorkspaceColumnsGeometry.shared.update(
             conversation: conversationFrame.map { $0.minX ... $0.maxX },
             columns: islands.map { island in
                 let frame = convert(island.view.frame, to: nil)
+                let minX = island.column.isFullWidth ? max(frame.minX, leadingSidebarEdge) : frame.minX
                 return WorkspaceColumnsGeometry.Column(
                     id: island.column.id,
                     isSideConversation: island.column.isSideConversation,
                     isThread: island.column.isThread,
-                    minX: frame.minX,
+                    minX: minX,
                     maxX: frame.maxX,
                     isFullWidth: island.column.isFullWidth,
                     widening: island.column.isFullWidth ? widening : 0,
@@ -1098,23 +1151,128 @@ extension EnvironmentValues {
     @Entry var isLeavingWorkspace = false
 }
 
-/// How much of the conversation's trailing edge a column slides over
-/// while the conversation keeps its wider width (`WorkspaceColumnsView`).
-/// Views at the conversation's trailing edge, such as the composer
-/// (`ConversationFooterHost`), stay clear of it on every frame, outside
-/// the conversation's view graph.
+/// How much of a conversation's leading and trailing edges adjacent columns
+/// cover while the conversation spans behind them (`WorkspaceColumnsView`).
+/// Views at the conversation's edges stay clear of covered spans on every frame.
+@MainActor
 final class WorkspaceConversationCover {
+    struct Insets: Equatable, Sendable {
+        static let zero = Self(leading: 0, trailing: 0)
+
+        var leading: CGFloat = 0
+        var trailing: CGFloat = 0
+    }
+
     static let shared = WorkspaceConversationCover()
     /// Posted on the main thread, in the frame that moves the columns.
     static let didChange = Notification.Name("SakuraCordWorkspaceConversationCoverDidChange")
-    private(set) var trailingInset: CGFloat = 0
+    private(set) var insets: Insets = .zero
+    private var provider: (NSView) -> Insets = { _ in .zero }
+
+    var trailingInset: CGFloat { insets.trailing }
 
     private init() {}
 
-    func update(trailingInset: CGFloat) {
-        guard trailingInset != self.trailingInset else { return }
-        self.trailingInset = trailingInset
-        NotificationCenter.default.post(name: Self.didChange, object: self)
+    func update(insets: Insets, provider: @escaping (NSView) -> Insets) {
+        let changed = insets != self.insets
+        self.insets = insets
+        self.provider = provider
+        if changed {
+            NotificationCenter.default.post(name: Self.didChange, object: self)
+        }
+    }
+
+    /// How much of `view`'s leading and trailing edges are covered by split sidebars or inspectors.
+    func insets(for view: NSView) -> Insets {
+        provider(view)
+    }
+
+    /// How much of `view`'s trailing edge is covered by an inspector.
+    func trailingInset(for view: NSView) -> CGFloat {
+        provider(view).trailing
+    }
+}
+
+extension View {
+    /// Pads the view away from any translucent inspector covering the
+    /// workspace conversation's trailing edge.
+    func padsForWorkspaceConversationCover() -> some View {
+        modifier(ConversationCoverPaddingModifier())
+    }
+}
+
+private struct ConversationCoverPaddingModifier: ViewModifier {
+    @State private var trailingInset: CGFloat = WorkspaceConversationCover.shared.trailingInset
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.trailing, trailingInset)
+            .background {
+                WorkspaceConversationCoverProbe { inset in
+                    if abs(trailingInset - inset) >= 0.25 {
+                        trailingInset = inset
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+    }
+}
+
+private struct WorkspaceConversationCoverProbe: NSViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    func makeNSView(context _: Context) -> ProbeView {
+        ProbeView(onChange: onChange)
+    }
+
+    func updateNSView(_ view: ProbeView, context _: Context) {
+        view.onChange = onChange
+        view.publishIfAttached()
+    }
+
+    final class ProbeView: NSView {
+        var onChange: (CGFloat) -> Void
+        private var observer: NSObjectProtocol?
+
+        init(onChange: @escaping (CGFloat) -> Void) {
+            self.onChange = onChange
+            super.init(frame: .zero)
+            observer = NotificationCenter.default.addObserver(
+                forName: WorkspaceConversationCover.didChange,
+                object: nil,
+                queue: nil
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.publish() }
+            }
+        }
+
+        @available(*, unavailable)
+        required init?(coder _: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        isolated deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+            publish()
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated { self?.publish() }
+            }
+        }
+
+        func publishIfAttached() {
+            guard window != nil else { return }
+            publish()
+        }
+
+        private func publish() {
+            guard window != nil else { return }
+            onChange(WorkspaceConversationCover.shared.trailingInset(for: self))
+        }
     }
 }
 

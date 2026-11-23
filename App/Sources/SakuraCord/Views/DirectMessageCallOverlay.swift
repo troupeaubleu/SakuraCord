@@ -38,6 +38,7 @@ struct DockedRegionChatWorkspace<Region: View>: View {
             VStack(spacing: 0) {
                 region
                     .frame(height: regionHeight)
+                    .padsForWorkspaceConversationCover()
 
                 DirectMessageCallResizeHandle(
                     height: regionHeight,
@@ -62,6 +63,7 @@ struct DockedRegionChatWorkspace<Region: View>: View {
                         preferredHeight = Double(adjustedHeight)
                     }
                 )
+                .padsForWorkspaceConversationCover()
 
                 ChatDetailView(model: model)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

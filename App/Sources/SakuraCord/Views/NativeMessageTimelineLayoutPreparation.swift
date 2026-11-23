@@ -10,10 +10,15 @@ extension NativeMessageTimelineCoordinator {
         let inviteRevision: UInt64
         let timestampDay: Date
         let width: CGFloat
+        let coverInsets: WorkspaceConversationCover.Insets
         var layouts: [NativeMessageTimelineItem.Identifier: CachedItemLayout] = [:]
         var isComplete = false
 
-        init(parent: NativeMessageTimelineView, width: CGFloat) {
+        init(
+            parent: NativeMessageTimelineView,
+            width: CGFloat,
+            coverInsets: WorkspaceConversationCover.Insets
+        ) {
             self.parent = parent
             rowsRevision = parent.rowsRevision
             presentationRevision = parent.presentationRevision
@@ -21,9 +26,14 @@ extension NativeMessageTimelineCoordinator {
             inviteRevision = parent.model.serverInvites.revision
             timestampDay = Calendar.autoupdatingCurrent.startOfDay(for: .now)
             self.width = width
+            self.coverInsets = coverInsets
         }
 
-        func matches(_ parent: NativeMessageTimelineView, width: CGFloat) -> Bool {
+        func matches(
+            _ parent: NativeMessageTimelineView,
+            width: CGFloat,
+            coverInsets: WorkspaceConversationCover.Insets
+        ) -> Bool {
             self.parent.model === parent.model
                 && self.parent.conversation == parent.conversation
                 && rowsRevision == parent.rowsRevision
@@ -32,6 +42,8 @@ extension NativeMessageTimelineCoordinator {
                 && inviteRevision == parent.model.serverInvites.revision
                 && timestampDay == Calendar.autoupdatingCurrent.startOfDay(for: .now)
                 && abs(self.width - width) < 0.5
+                && abs(self.coverInsets.leading - coverInsets.leading) < 0.5
+                && abs(self.coverInsets.trailing - coverInsets.trailing) < 0.5
         }
     }
 
@@ -46,12 +58,15 @@ extension NativeMessageTimelineCoordinator {
             return false
         }
         let width = max(220, scrollView.contentView.bounds.width.rounded())
+        let coverInsets = resolvedCoverInsets(for: scrollView)
         guard timestampDay == Calendar.autoupdatingCurrent.startOfDay(for: .now),
               newParent.model === parent.model,
               newParent.conversation == parent.conversation,
               newParent.scrollRequest == parent.scrollRequest,
               pendingLayoutWidth == nil,
+              pendingCoverInsets == nil,
               abs(width - layoutWidth) < 0.5,
+              coverInsets == layoutCoverInsets,
               rowCount > 0,
               (newParent.rowsUpdateJournal.latestRevision ?? newParent.rowsRevision)
                 == newParent.rowsRevision
@@ -61,7 +76,7 @@ extension NativeMessageTimelineCoordinator {
         }
 
         if let preparation = layoutPreparation,
-           preparation.matches(newParent, width: width) {
+           preparation.matches(newParent, width: width, coverInsets: coverInsets) {
             preparation.parent = newParent
             return !preparation.isComplete
         }
@@ -90,7 +105,7 @@ extension NativeMessageTimelineCoordinator {
         // This buffer belongs only to this pending update. Unlike the bounded
         // recent-conversation cache, it must hold a complete presentation
         // update even when the timeline has more rows than that cache's limit.
-        let preparation = LayoutPreparation(parent: newParent, width: width)
+        let preparation = LayoutPreparation(parent: newParent, width: width, coverInsets: coverInsets)
         preparation.layouts.reserveCapacity(pendingItems.count)
         layoutPreparation = preparation
         layoutPreparationTask = Task { @MainActor [weak self, weak scrollView] in
@@ -102,8 +117,9 @@ extension NativeMessageTimelineCoordinator {
                 else { return }
                 guard preparation.matches(
                     preparation.parent,
-                    width: max(220, scrollView.contentView.bounds.width.rounded())
-                ), abs(self.layoutWidth - width) < 0.5
+                    width: max(220, scrollView.contentView.bounds.width.rounded()),
+                    coverInsets: self.resolvedCoverInsets(for: scrollView)
+                ), abs(self.layoutWidth - width) < 0.5, self.layoutCoverInsets == coverInsets
                 else {
                     self.layoutPreparationTask = nil
                     self.layoutPreparation = nil
@@ -114,10 +130,10 @@ extension NativeMessageTimelineCoordinator {
                     "TimelineLayoutPreparation"
                 ) {
                     self.cachedItemLayout(
-                        for: item, width: width,
+                        for: item, width: width, coverInsets: coverInsets,
                         presentationRevision: preparation.presentationRevision
                     ) ?? NativeTimelineRowLayout.make(
-                        item: item, width: width, source: preparation.parent.model
+                        item: item, width: width, coverInsets: coverInsets, source: preparation.parent.model
                     )
                 }
                 preparation.layouts[item.identifier] = CachedItemLayout(

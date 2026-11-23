@@ -14,6 +14,7 @@ struct ChatDetailView: View {
                     "Channel unavailable", systemImage: "lock.fill",
                     description: Text("You cannot view messages in this channel.")
                 )
+                .padsForWorkspaceConversationCover()
                 .background {
                     DisplayCompleteFrameReporter(
                         presentationID: channel.id.rawValue
@@ -59,6 +60,7 @@ struct ChatDetailView: View {
             }
         } else {
             ContentUnavailableView("Choose a conversation", systemImage: "bubble.left.and.bubble.right", description: Text("Select a server and channel to begin."))
+                .padsForWorkspaceConversationCover()
         }
     }
 }

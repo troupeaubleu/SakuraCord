@@ -37,7 +37,7 @@ struct GuildResourceConversationView: View {
                     onScrollActivityChange: { _ in }, onScrollStateChange: { _ in }, onUserScrollBegan: {}, onUserScrollEnded: { _ in }
                 )
                 // Like the other side chats, scroll beneath the toolbar glass.
-                .ignoresSafeArea(.container, edges: .top)
+                .ignoresSafeArea(.container, edges: [.top, .leading])
             }
         }
     }
