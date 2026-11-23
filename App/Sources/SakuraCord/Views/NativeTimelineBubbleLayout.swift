@@ -44,24 +44,30 @@ enum NativeTimelineBubbleLayout {
     }
 
     /// The widest a bubble's content column may grow in a timeline row.
-    static func maximumContentWidth(availableWidth: CGFloat) -> CGFloat {
-        max(
+    static func maximumContentWidth(
+        availableWidth: CGFloat,
+        horizontalInset: CGFloat = MessageRowLayoutMetrics.horizontalInset,
+        usesCompactAvatar: Bool = false
+    ) -> CGFloat {
+        let cap = usesCompactAvatar
+            ? availableWidth - horizontalInset * 2 - horizontalPadding * 2
+            : availableWidth * 0.68 - horizontalPadding * 2
+        return max(
             InterfaceScale.metric(28),
-            min(InterfaceScale.metric(500), availableWidth * 0.68 - horizontalPadding * 2)
+            min(InterfaceScale.metric(500), cap)
         )
     }
 
     static func preferredContentWidth(
-        for message: Message,
-        row: MessageRowPresentation,
+        for row: MessageRowPresentation,
         content: NativeTimelineTextPresentation.Value,
-        availableWidth: CGFloat,
+        maximumWidth: CGFloat,
         isEnabled: Bool,
         translation: NativeTimelineTranslationPresentation? = nil
     ) -> CGFloat {
         guard isEnabled else { return InterfaceScale.metric(80) }
+        let message = row.message
         let minimumWidth: CGFloat = InterfaceScale.metric(28)
-        let maximumWidth = maximumContentWidth(availableWidth: availableWidth)
         var preferredWidth = message.hasPoll ? min(InterfaceScale.metric(456), maximumWidth) : minimumWidth
         if let text = content.content {
             preferredWidth = max(
@@ -123,16 +129,21 @@ enum NativeTimelineBubbleLayout {
     static func column(
         availableWidth: CGFloat,
         horizontalInset: CGFloat,
-        avatarWidth: CGFloat,
         columnGap: CGFloat,
         isGenerated: Bool,
+        usesCompactAvatar: Bool = false,
         context: Context,
         preferredContentWidth: CGFloat
     ) -> Column {
+        let avatarWidth = MessageRowLayoutMetrics.avatarDiameter
         guard context.isEnabled else {
-            let contentX = isGenerated
-                ? horizontalInset + avatarWidth + 20
-                : horizontalInset + avatarWidth + columnGap
+            let contentX: CGFloat = if usesCompactAvatar {
+                horizontalInset + (isGenerated ? InterfaceScale.metric(24) : 0)
+            } else if isGenerated {
+                horizontalInset + avatarWidth + 20
+            } else {
+                horizontalInset + avatarWidth + columnGap
+            }
             return Column(
                 contentX: contentX,
                 contentWidth: max(
@@ -151,7 +162,7 @@ enum NativeTimelineBubbleLayout {
                 horizontalInset: horizontalInset,
                 avatarWidth: avatarWidth,
                 columnGap: columnGap,
-                showsAvatar: context.showsAvatar
+                showsAvatar: context.showsAvatar && !usesCompactAvatar
             ) + horizontalPadding
         }
         return Column(

@@ -39,6 +39,7 @@ extension NativeTimelineRowLayout {
         _ message: Message,
         origin: CGPoint,
         maximumWidth: CGFloat,
+        connectorWidth: CGFloat = InterfaceScale.metric(30),
         cosmeticPolicy: ProfileCosmeticPolicy
     ) -> CommandInvocationRegion {
         let user = message.interactionMetadata?.user.map(cosmeticPolicy.user)
@@ -69,7 +70,7 @@ extension NativeTimelineRowLayout {
         let connectorFrame = CGRect(
             x: origin.x,
             y: origin.y,
-            width: InterfaceScale.metric(30),
+            width: connectorWidth,
             height: MessageRowLayoutMetrics.commandInvocationHeight
         )
         var horizontalOffset = connectorFrame.maxX + 5

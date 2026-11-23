@@ -22,6 +22,18 @@ extension NativeTimelineRowLayout {
             max(InterfaceScale.metric(160), width - leadingInset - trailingInspectorInset)
         }
 
+        private var usesCompactAvatar: Bool {
+            contentBoundsWidth <= MessageRowLayoutMetrics.compactAvatarMaximumRowWidth
+        }
+
+        private var maximumBubbleContentWidth: CGFloat {
+            NativeTimelineBubbleLayout.maximumContentWidth(
+                availableWidth: contentBoundsWidth,
+                horizontalInset: horizontalInset,
+                usesCompactAvatar: usesCompactAvatar
+            )
+        }
+
         private var result = NativeTimelineRowLayout()
         private var contentPresentation: NativeTimelineTextPresentation.Value
         private var translationPresentation: NativeTimelineTranslationPresentation?
@@ -170,10 +182,9 @@ extension NativeTimelineRowLayout {
             )
             let preferredBubbleContentWidth = fittedBubbleContentWidth ??
                 NativeTimelineBubbleLayout.preferredContentWidth(
-                    for: message,
-                    row: row,
+                    for: row,
                     content: contentPresentation,
-                    availableWidth: contentBoundsWidth,
+                    maximumWidth: maximumBubbleContentWidth,
                     isEnabled: usesBubbles,
                     translation: translationPresentation
                 )
@@ -181,9 +192,9 @@ extension NativeTimelineRowLayout {
                 NativeTimelineBubbleLayout.column(
                     availableWidth: contentBoundsWidth,
                     horizontalInset: horizontalInset,
-                    avatarWidth: avatarWidth,
                     columnGap: columnGap,
                     isGenerated: isGenerated,
+                    usesCompactAvatar: usesCompactAvatar,
                     context: bubbleContext,
                     preferredContentWidth: preferredContentWidth
                 )
@@ -192,7 +203,7 @@ extension NativeTimelineRowLayout {
             // An edit can outgrow the text it replaces. Only its editor and
             // the bubble around it widen; media keeps its place.
             if usesBubbles, editingTextHeight != nil {
-                editingTextColumn = column(preferring: NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: contentBoundsWidth))
+                editingTextColumn = column(preferring: maximumBubbleContentWidth)
             }
             contentX = leadingInset + (row.isResource ? horizontalInset : bubbleColumn.contentX)
             contentWidth = row.isResource ? contentBoundsWidth - horizontalInset * 2 : bubbleColumn.contentWidth
@@ -248,11 +259,12 @@ extension NativeTimelineRowLayout {
                     width: contentBoundsWidth - horizontalInset * 2,
                     height: NativeTimelineReplyMetrics.lineHeight
                 )
+                let replyContentMinX = contentX + (usesCompactAvatar ? MessageRowLayoutMetrics.compactAvatarHeaderInset : 0)
                 result.replyFrame = frame
                 result.replyContentFrame = CGRect(
-                    x: contentX,
+                    x: replyContentMinX,
                     y: frame.minY - InterfaceScale.metric(1),
-                    width: max(0, frame.maxX - contentX),
+                    width: max(0, frame.maxX - replyContentMinX),
                     height: frame.height
                 )
                 verticalOffset += NativeTimelineReplyMetrics.lineHeight
@@ -263,6 +275,9 @@ extension NativeTimelineRowLayout {
                     message,
                     origin: CGPoint(x: leadingInset + horizontalInset, y: verticalOffset),
                     maximumWidth: contentBoundsWidth - horizontalInset * 2,
+                    connectorWidth: usesCompactAvatar
+                        ? MessageRowLayoutMetrics.compactAvatarHeaderInset - 5
+                        : InterfaceScale.metric(30),
                     cosmeticPolicy: source?.cosmeticPolicy ?? .init()
                 )
                 verticalOffset += MessageRowLayoutMetrics.commandInvocationHeight
@@ -275,8 +290,8 @@ extension NativeTimelineRowLayout {
             showsIncomingAvatar = !isGenerated
                 && !isOutgoingBubble
                 && showsIncomingIdentity
-                && (usesBubbles ? row.endsGroup : row.startsGroup)
-            if showsIncomingAvatar {
+                && (usesBubbles && !usesCompactAvatar ? row.endsGroup : row.startsGroup)
+            if showsIncomingAvatar, !usesCompactAvatar {
                 // A bubble avatar keeps its gap to the bubble's tail.
                 let diameter = usesBubbles ? NativeTimelineBubbleLayout.avatarDiameter : avatarWidth
                 result.avatarFrame = CGRect(
@@ -293,7 +308,7 @@ extension NativeTimelineRowLayout {
                         isCommandResponse: message.type.isCommandResponse
                     )
             } else if !isGenerated, !isOutgoingBubble, showsIncomingIdentity,
-                      !showsIncomingAvatar
+                      !showsIncomingAvatar, !usesCompactAvatar
             {
                 result.compactTimestampFrame = CGRect(
                     x: leadingInset + horizontalInset,
@@ -304,8 +319,9 @@ extension NativeTimelineRowLayout {
             }
 
             if isGenerated {
+                let iconX = leadingInset + horizontalInset + (usesCompactAvatar ? 0 : InterfaceScale.metric(36))
                 result.systemIconFrame = CGRect(
-                    x: leadingInset + horizontalInset + InterfaceScale.metric(36),
+                    x: iconX,
                     y: verticalOffset,
                     width: InterfaceScale.metric(16),
                     height: MessageRowLayoutMetrics.compactContentHeight
@@ -349,9 +365,9 @@ extension NativeTimelineRowLayout {
                 // Outgoing previews grow leftward, up to the incoming avatar
                 // column, and neither side outgrows the bubble column.
                 let availableWidth = min(
-                    NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: contentBoundsWidth),
+                    maximumBubbleContentWidth,
                     isOutgoingBubble
-                        ? referenceX - (leadingInset + horizontalInset) - avatarWidth
+                        ? referenceX - (leadingInset + horizontalInset) - (usesCompactAvatar ? 0 : avatarWidth)
                         : leadingInset + contentBoundsWidth - horizontalInset - referenceX
                 )
                 let previewWidth = max(0, min(ceil(naturalWidth), availableWidth))
@@ -389,6 +405,17 @@ extension NativeTimelineRowLayout {
             verticalOffset += height + bubbleGap
         }
 
+        /// A narrow row's small avatar, centred on the author line it leads.
+        private func compactAvatarFrame(headerHeight: CGFloat) -> CGRect {
+            let diameter = MessageRowLayoutMetrics.compactAvatarDiameter
+            return CGRect(
+                x: contentX,
+                y: verticalOffset + ((headerHeight - diameter) / 2).rounded(),
+                width: diameter,
+                height: diameter
+            )
+        }
+
         private mutating func appendAuthorHeader() {
             // AutoMod heads its alerts; the member it caught is named in the card.
             let isAutoModAlert = message.type == .autoModerationAction
@@ -396,10 +423,12 @@ extension NativeTimelineRowLayout {
             let author = isAutoModAlert ? .autoMod : presentation?.user ?? message.author
             result.authorPrimaryGuild = author.primaryGuild
             let authorFont = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: metrics.authorFont)
+            let headerLeadingInset = showsIncomingAvatar && usesCompactAvatar ? MessageRowLayoutMetrics.compactAvatarHeaderInset : 0
+            let headerOriginX = contentX + headerLeadingInset
             let showsRoleIndicator = source?.roleColorDisplay == .nextToNames
                 && presentation?.roleColorHex != nil
             let indicatorWidth: CGFloat = showsRoleIndicator ? InterfaceScale.metric(15) : 0
-            let availableWidth = max(0, ordinaryContentWidth - indicatorWidth)
+            let availableWidth = max(0, ordinaryContentWidth - headerLeadingInset - indicatorWidth)
             let timestamp = NativeTimelineTimestamp.headerText(
                 for: message.timestamp, settings: source?.interfaceSettings ?? .defaults
             )
@@ -441,12 +470,15 @@ extension NativeTimelineRowLayout {
                 tag == nil && botWidth == 0 && role == nil ? MessageRowLayoutMetrics.authorLineHeight : max(badgeHeight, roleIconSize)
             ))
             let baselineY = verticalOffset + authorText.baselineOffset(inHeight: headerHeight)
+            if showsIncomingAvatar, usesCompactAvatar {
+                result.avatarFrame = compactAvatarFrame(headerHeight: headerHeight)
+            }
             result.authorText = authorText
             result.authorFrame = CGRect(
-                x: contentX + indicatorWidth, y: verticalOffset,
+                x: headerOriginX + indicatorWidth, y: verticalOffset,
                 width: authorText.width, height: headerHeight
             )
-            var headerX = contentX + indicatorWidth + authorText.width
+            var headerX = headerOriginX + indicatorWidth + authorText.width
             if let tag {
                 headerX += InterfaceScale.metric(7)
                 result.serverTagRegion = .init(
@@ -1031,7 +1063,9 @@ extension NativeTimelineRowLayout {
                     showsTail: row.endsGroup
                 )
                 result.bubbleRegion = region
-                result.avatarFrame = NativeTimelineBubbleLayout.bottomAlignedAvatarFrame(result.avatarFrame, to: region)
+                if !usesCompactAvatar {
+                    result.avatarFrame = NativeTimelineBubbleLayout.bottomAlignedAvatarFrame(result.avatarFrame, to: region)
+                }
             }
 
         }
@@ -1084,7 +1118,7 @@ extension NativeTimelineRowLayout {
             guard usesBubbles else { return contentWidth }
             return max(contentWidth, min(
                 natural,
-                NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: contentBoundsWidth),
+                maximumBubbleContentWidth,
                 isOutgoingBubble ? contentX + contentWidth - (leadingInset + horizontalInset) : ordinaryContentWidth
             ))
         }
@@ -1170,7 +1204,7 @@ extension NativeTimelineRowLayout {
                     visibleContentMaxY + highlightInsets.bottom,
                     highlightMinY
                         + highlightInsets.top
-                        + (showsIncomingAvatar && !usesBubbles
+                        + (showsIncomingAvatar && !usesBubbles && !usesCompactAvatar
                             ? MessageRowLayoutMetrics.avatarDiameter
                             : MessageRowLayoutMetrics.compactContentHeight)
                         + highlightInsets.bottom
@@ -1221,6 +1255,11 @@ enum MessageRowLayoutMetrics {
     nonisolated static var horizontalInset: CGFloat { InterfaceScale.metric(14) }
     nonisolated static var avatarDiameter: CGFloat { InterfaceScale.metric(38) }
     nonisolated static var avatarColumnGap: CGFloat { InterfaceScale.metric(12) }
+    /// A narrow row's avatar stands as tall as the server tag beside it.
+    nonisolated static var compactAvatarDiameter: CGFloat { ServerTagAppearance.height }
+    /// A compact avatar plus its gap to the author name beside it.
+    nonisolated static var compactAvatarHeaderInset: CGFloat { compactAvatarDiameter + InterfaceScale.metric(6) }
+    nonisolated static var compactAvatarMaximumRowWidth: CGFloat { InterfaceScale.metric(360) }
     /// Forwarded content's indent past its 3-point bar.
     nonisolated static var forwardedContentInset: CGFloat { InterfaceScale.metric(11) }
     /// The forwarded header and source rows grow with their caption text,

@@ -1149,8 +1149,12 @@ extension NativeTimelineRowPainter {
     }
 
     static func replyConnector(in connectorFrame: CGRect) {
+        let usesCompactStem = connectorFrame.width < MessageRowLayoutMetrics.compactAvatarHeaderInset
+        let stemOffset = usesCompactStem
+            ? MessageRowLayoutMetrics.compactAvatarDiameter / 2
+            : MessageRowLayoutMetrics.avatarDiameter / 2
         elbowConnector(
-            stemX: connectorFrame.minX + 19,
+            stemX: connectorFrame.minX + stemOffset,
             fromY: connectorFrame.maxY,
             cornerY: connectorFrame.minY + connectorFrame.height * 0.46,
             toX: connectorFrame.maxX
