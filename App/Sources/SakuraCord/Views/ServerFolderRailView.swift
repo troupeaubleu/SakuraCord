@@ -78,13 +78,7 @@ struct ServerFolderRailView: View {
                 let verticalInset = 3 / displayScale
                 let radius = InterfaceScale.metric(13 + (ServerFolderRailMetrics.containerSize - 44) / 2)
                 ConcentricRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(folderColor.opacity(isExpanded ? 0.12 : 0.18))
-                    .overlay {
-                        ConcentricRectangle(cornerRadius: radius - 0.5, style: .continuous)
-                            .stroke(folderColor.opacity(0.25), lineWidth: 1)
-                            .padding(0.5)
-                            .opacity(isExpanded ? 1 : 0)
-                    }
+                    .fill(folderColor.opacity(isExpanded ? 0.20 : 0.18))
                     .frame(
                         width: InterfaceScale.metric(ServerFolderRailMetrics.containerSize),
                         height: isExpanded ? max(0, geometry.size.height - verticalInset * 2) : InterfaceScale.metric(ServerFolderRailMetrics.containerSize)
@@ -224,16 +218,17 @@ struct ServerFolderRailView: View {
                     ServerFolderMorphingIcon(
                         guild: guild,
                         size: bounds.width,
-                        cornerRadius: InterfaceScale.metric(isExpanded ? 13 : 6),
+                        cornerRadius: isExpanded ? InterfaceScale.metric(13) : bounds.width / 2,
                         isSelected: isExpanded && entry.guildEntries.first { $0.id == guild.id }?.isSelected == true,
                         animates: isExpanded && !isAnimatingFolder && pointerLocation.map { bounds.contains($0) } == true
                     )
                     .mask {
-                        ConcentricRectangle(cornerRadius: InterfaceScale.metric(13) * previewScale, style: .continuous)
-                            .frame(
-                                width: isExpanded ? bounds.width : InterfaceScale.metric(44) * previewScale,
-                                height: isExpanded ? bounds.height : InterfaceScale.metric(44) * previewScale
-                            )
+                        let maskRadius = InterfaceScale.metric(isExpanded ? 13 : 17) * previewScale
+                        let maskSize = isExpanded
+                            ? bounds.width
+                            : InterfaceScale.metric(ServerFolderRailMetrics.containerSize) * previewScale
+                        ConcentricRectangle(cornerRadius: maskRadius, style: .continuous)
+                            .frame(width: maskSize, height: isExpanded ? bounds.height : maskSize)
                             .position(
                                 x: isExpanded ? bounds.width / 2 : InterfaceScale.metric(34) - bounds.minX,
                                 y: isExpanded ? bounds.height / 2 : InterfaceScale.metric(27) - bounds.minY
@@ -327,10 +322,6 @@ struct ServerFolderRailHeader: View {
                                 .frame(width: InterfaceScale.metric(44), height: InterfaceScale.metric(44))
                         } else {
                             collapsedPreview
-                                .mask {
-                                    ConcentricRectangle(cornerRadius: InterfaceScale.metric(13), style: .continuous)
-                                        .padding(InterfaceScale.metric(4))
-                                }
                         }
                     }
                     .background {
@@ -405,11 +396,12 @@ struct ServerFolderRailHeader: View {
     @ViewBuilder
     private func previewIcon(_ guild: Guild?) -> some View {
         if let guild {
+            let previewSize = InterfaceScale.metric(ServerFolderRailMetrics.previewIconSize)
             GuildIconView(
                 name: guild.name,
                 iconURL: guild.iconURL,
-                size: InterfaceScale.metric(ServerFolderRailMetrics.previewIconSize),
-                cornerRadius: InterfaceScale.metric(6),
+                size: previewSize,
+                cornerRadius: previewSize / 2,
                 animates: false,
                 loadsImage: !morphsInFolder && (loadsImageWhenOffscreen || iconIsVisible),
                 morphsInFolder: morphsInFolder && !reduceMotion,
@@ -562,7 +554,7 @@ struct ServerFolderRowsReveal: ViewModifier {
 
 enum ServerFolderRailMetrics {
     static let containerSize: CGFloat = 52
-    static let previewIconSize: CGFloat = 21
+    static let previewIconSize: CGFloat = 19
     static let guildSpacing: CGFloat = 8
     static let guildRowHeight: CGFloat = 46
     static let collapsedRowHeight: CGFloat = 54
