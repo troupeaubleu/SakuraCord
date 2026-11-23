@@ -753,6 +753,7 @@ extension NativeTimelineCanvasView {
                     || isHoverActive(item.key, hoveredGroup: hoveredGroup, hoveredIdentifier: hoveredIdentifier)
             )
             overlay.setPlaybackSuppressed(pointer.suppressesHoverPresentation)
+            overlay.showsHoverShade = isAvatarHoverShaded(item.key)
             overlay.display(
                 item.image,
                 mediaFrame: localMediaFrame,

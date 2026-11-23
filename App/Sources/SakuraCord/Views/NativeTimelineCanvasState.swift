@@ -43,6 +43,7 @@ final class NativeTimelinePointerState {
     var hoveredRow: Int?
     var hoveredCompactTimestampRow: Int?
     var hoveredAuthorMessageID: MessageID?
+    var hoveredAvatarMessageID: MessageID?
     var hoveredServerTagMessageID: MessageID?
     var hoveredSilentBadgeMessageID: MessageID?
     var hoveredCommandPillMessageID: MessageID?
@@ -85,6 +86,7 @@ final class NativeTimelinePointerState {
         hoveredRow = nil
         hoveredCompactTimestampRow = nil
         hoveredAuthorMessageID = nil
+        hoveredAvatarMessageID = nil
         hoveredServerTagMessageID = nil
         hoveredSilentBadgeMessageID = nil
         hoveredCommandPillMessageID = nil

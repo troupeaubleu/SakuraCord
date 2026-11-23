@@ -822,6 +822,7 @@ extension NativeTimelineCanvasView {
         setHoveredRow(row ?? point.flatMap { hoveredRowIndex(at: $0) })
         setHoveredCompactTimestampRow(point.flatMap { compactTimestampRowIndex(at: $0) })
         setHoveredAuthorMessageID(point.flatMap { authorNamePointerHit(at: $0) })
+        setHoveredAvatarMessageID(point.flatMap { avatarPointerHit(at: $0) })
         setHoveredServerTagMessageID(point.flatMap { serverTagPointerHit(at: $0) })
         setHoveredSilentBadgeMessageID(point.flatMap { silentBadgePointerHit(at: $0) })
         setHoveredCommandPillMessageID(point.flatMap { commandPillPointerHit(at: $0) })
@@ -889,6 +890,15 @@ extension NativeTimelineCanvasView {
             guard case let .message(row, _, _) = items[index], row.startsGroup, !row.message.type.hasGeneratedContent
             else { return nil }
             return layouts[index].authorFrame
+        }
+    }
+
+    /// An author's avatar, which opens their profile as their name does.
+    func avatarPointerHit(at point: CGPoint) -> MessageID? {
+        messageID(at: point) { index in
+            guard case let .message(row, _, _) = items[index], !row.message.type.hasGeneratedContent
+            else { return nil }
+            return layouts[index].avatarFrame
         }
     }
 

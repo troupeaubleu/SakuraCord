@@ -6,6 +6,13 @@ final class NativeTimelineAnimatedMediaOverlay: NSView {
     let imageClipView = NSView()
     let imageView = AnimatedImageCanvas()
     let selectionView = NSView()
+    /// Darkens an author's animated avatar while it is hovered, as the row
+    /// darkens the still one beneath.
+    private let hoverShadeView = NSView()
+    var showsHoverShade = false {
+        didSet { hoverShadeView.isHidden = !showsHoverShade }
+    }
+
     private var isScrollSuppressed = false
     private var isHoverPlaybackEnabled = true
 
@@ -22,6 +29,13 @@ final class NativeTimelineAnimatedMediaOverlay: NSView {
         imageView.frame = imageClipView.bounds
         imageView.autoresizingMask = [.width, .height]
         imageClipView.addSubview(imageView)
+
+        hoverShadeView.wantsLayer = true
+        hoverShadeView.layer?.backgroundColor = NativeTimelineRowPainter.avatarHoverShade.cgColor
+        hoverShadeView.frame = imageClipView.bounds
+        hoverShadeView.autoresizingMask = [.width, .height]
+        hoverShadeView.isHidden = true
+        imageClipView.addSubview(hoverShadeView)
 
         selectionView.wantsLayer = true
         updateSelectionColor()

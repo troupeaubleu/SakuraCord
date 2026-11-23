@@ -858,6 +858,7 @@ extension NativeTimelineCanvasView {
             || mediaViewerHighlightedMessageID == item.messageID
             || pointer.hoveredCompactTimestampRow == index
             || pointer.hoveredAuthorMessageID == item.messageID
+            || pointer.hoveredAvatarMessageID == item.messageID
             || pointer.hoveredServerTagMessageID == item.messageID
             || serverTagCardPresentation?.messageID == item.messageID
             || pointer.hoveredCommandPillMessageID == item.messageID
@@ -901,6 +902,7 @@ extension NativeTimelineCanvasView {
                 isHovered: pointer.hoveredRow == index || presentsViewerHighlight,
                 showsCompactTimestamp: pointer.hoveredCompactTimestampRow == index,
                 isAuthorHovered: pointer.hoveredAuthorMessageID == item.messageID,
+                isAvatarHovered: pointer.hoveredAvatarMessageID == item.messageID,
                 isServerTagHovered: pointer.hoveredServerTagMessageID == item.messageID || serverTagCardPresentation?.messageID == item.messageID,
                 isCommandPillHovered: pointer.hoveredCommandPillMessageID == item.messageID,
                 hoveredMention: pointer.hoveredMention?.itemIdentifier == item.identifier ? pointer.hoveredMention : nil,

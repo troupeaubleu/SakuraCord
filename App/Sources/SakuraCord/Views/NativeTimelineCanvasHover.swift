@@ -266,6 +266,22 @@ extension NativeTimelineCanvasView {
         return pointer.componentButtonHoverFades.filter { $0.key.messageID == messageID }.mapValues { $0.progress(at: now) }
     }
 
+    func setHoveredAvatarMessageID(_ value: MessageID?) {
+        guard pointer.hoveredAvatarMessageID != value else { return }
+        let old = pointer.hoveredAvatarMessageID
+        pointer.hoveredAvatarMessageID = value
+        for (key, overlay) in animatedMediaOverlays where key.role == .authorAvatar {
+            overlay.showsHoverShade = isAvatarHoverShaded(key)
+        }
+        invalidateHoverRows(from: old, to: value)
+    }
+
+    /// Whether an animated avatar's overlay shades as the avatar it plays over.
+    func isAvatarHoverShaded(_ key: AnimatedMediaOverlayKey) -> Bool {
+        guard key.role == .authorAvatar, let messageID = pointer.hoveredAvatarMessageID else { return false }
+        return items.first { $0.identifier == key.row }?.messageID == messageID
+    }
+
     func setHoveredForwardedSourceMessageID(_ value: MessageID?) {
         guard pointer.hoveredForwardedSourceMessageID != value else { return }
         let old = pointer.hoveredForwardedSourceMessageID

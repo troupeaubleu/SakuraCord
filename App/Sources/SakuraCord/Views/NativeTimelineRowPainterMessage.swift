@@ -7,6 +7,7 @@ struct NativeTimelineRowInteraction {
     var isHovered = false
     var showsCompactTimestamp = false
     var isAuthorHovered = false
+    var isAvatarHovered = false
     var isServerTagHovered = false
     var isCommandPillHovered = false
     var hoveredMention: NativeTimelineMentionHover?
@@ -158,17 +159,22 @@ extension NativeTimelineRowPainter {
     private static func drawMessageIdentity(_ input: NativeTimelineMessageDrawInput) {
         let message = input.row.message
         let author = input.model?.authorPresentation(for: message)
-        if let frame = input.layout.avatarFrame {
+        if let avatarFrame = input.layout.avatarFrame {
             let presentedAuthor =
                 author?.user
                 ?? message.author
-            avatar(url: presentedAuthor.avatarURL, in: frame)
+            avatar(url: presentedAuthor.avatarURL, in: avatarFrame)
+            // A hovered avatar darkens, as it opens the author's profile.
+            if input.interaction.isAvatarHovered {
+                avatarHoverShade.setFill()
+                NSBezierPath(ovalIn: avatarFrame).fill()
+            }
             if let decorationURL =
                 presentedAuthor.avatarDecorationURL
             {
                 avatarDecoration(
                     url: decorationURL,
-                    around: frame
+                    around: avatarFrame
                 )
             }
         }
@@ -822,6 +828,8 @@ extension NativeTimelineRowPainter {
     }
 
     /// Draws a neutral circle until the picture is decoded.
+    static var avatarHoverShade: NSColor { NSColor.black.withAlphaComponent(0.2) }
+
     static func avatar(url: URL?, in frame: CGRect) {
         if let url, let image = MediaImageStore.shared.stillImage(for: .avatar(url)) {
             drawImage(image, in: frame, cornerRadius: frame.width / 2, fillsFrame: true)
